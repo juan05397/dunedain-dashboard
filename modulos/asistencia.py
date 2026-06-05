@@ -3,7 +3,7 @@ import sqlite3
 import pandas as pd
 import re
 from datetime import date
-from database import conectar_bd
+from database import conectar_bd, obtener_ciclo_activo
 
 
 def preparar_bd():
@@ -40,6 +40,15 @@ def mostrar():
     except Exception:
         df_eventos = pd.DataFrame()
 
+    ciclo_activo = obtener_ciclo_activo()
+    if not ciclo_activo:
+        st.error("❌ No existe un ciclo inmortal activo en el sistema.")
+        st.info("💡 Un administrador debe crear un ciclo inmortal activo para poder gestionar asistencias.")
+        return
+
+    ciclo_id = ciclo_activo[0]
+    ciclo = f"Ciclo {ciclo_id}"
+
     col_ev1, col_ev2, col_ev3 = st.columns(3)
     with col_ev1:
         evento_seleccionado = st.selectbox(
@@ -47,7 +56,7 @@ def mostrar():
     with col_ev2:
         fecha_evento = st.date_input("Fecha del Evento:", date.today())
     with col_ev3:
-        ciclo = st.text_input("Ciclo / Semana:", value="Ciclo 1")
+        st.text_input("Ciclo Activo:", value=f"Ciclo {ciclo_id} (Desde: {ciclo_activo[1]})", disabled=True)
 
     if df_eventos.empty:
         st.warning("⚠️ No hay eventos creados en la base de datos.")

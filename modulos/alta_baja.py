@@ -78,14 +78,16 @@ def mostrar():
                             try:
                                 conexion_write = conectar_bd()
                                 cursor_write = conexion_write.cursor()
+                                usuario_actual = st.session_state.get('usuario', 'Desconocido')
                                 if miembro_bd:
-                                    cursor_write.execute("UPDATE miembros SET estado='Expulsado', fecha_baja=? WHERE id=?", (str(
-                                        date.today()), miembro_bd[0]))
+                                    cursor_write.execute("UPDATE miembros SET estado='Expulsado', fecha_baja=?, motivo_baja=?, baja_realizada_por=? WHERE id=?", (
+                                        str(date.today()), motivo_baja, usuario_actual, miembro_bd[0]))
                                     cursor_write.execute("INSERT INTO sanciones (miembro_id, tipo_sancion_id, motivo, fecha) VALUES (?, 2, ?, ?)", (
                                         miembro_bd[0], motivo_baja, str(date.today())))
                                 else:
                                     cursor_write.execute(
-                                        "INSERT INTO miembros (nombre, estado, clase, resonancia, ic) VALUES (?, 'Expulsado', 'Desconocida', 0, 0)", (nombre_nuevo,))
+                                        "INSERT INTO miembros (nombre, estado, clase, resonancia, ic, fecha_baja, motivo_baja, baja_realizada_por) VALUES (?, 'Expulsado', 'Desconocida', 0, 0, ?, ?, ?)", (
+                                            nombre_nuevo, str(date.today()), motivo_baja, usuario_actual))
                                     nuevo_id = cursor_write.lastrowid
                                     cursor_write.execute("INSERT INTO sanciones (miembro_id, tipo_sancion_id, motivo, fecha) VALUES (?, 2, ?, ?)", (
                                         nuevo_id, motivo_baja, str(date.today())))
@@ -125,12 +127,13 @@ def mostrar():
                                 try:
                                     conexion_write = conectar_bd()
                                     cursor_write = conexion_write.cursor()
+                                    usuario_actual = st.session_state.get('usuario', 'Desconocido')
                                     if miembro_bd:
-                                        cursor_write.execute("UPDATE miembros SET clase=?, resonancia=?, ic=?, telefono=?, usa_discord=?, usa_whatsapp=?, fecha_ingreso=?, estado='Activo', fecha_baja=NULL WHERE id=?", (
-                                            clase_nueva, reso_nueva, ic_nuevo, telefono_nuevo, check_disc, check_wa, str(fecha_ingreso), miembro_bd[0]))
+                                        cursor_write.execute("UPDATE miembros SET clase=?, resonancia=?, ic=?, telefono=?, usa_discord=?, usa_whatsapp=?, fecha_ingreso=?, estado='Activo', fecha_baja=NULL, alta_realizada_por=? WHERE id=?", (
+                                            clase_nueva, reso_nueva, ic_nuevo, telefono_nuevo, check_disc, check_wa, str(fecha_ingreso), usuario_actual, miembro_bd[0]))
                                     else:
-                                        cursor_write.execute("INSERT INTO miembros (nombre, clase, resonancia, ic, telefono, usa_discord, usa_whatsapp, fecha_ingreso, estado) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'Activo')", (
-                                            nombre_nuevo, clase_nueva, reso_nueva, ic_nuevo, telefono_nuevo, check_disc, check_wa, str(fecha_ingreso)))
+                                        cursor_write.execute("INSERT INTO miembros (nombre, clase, resonancia, ic, telefono, usa_discord, usa_whatsapp, fecha_ingreso, estado, alta_realizada_por) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'Activo', ?)", (
+                                            nombre_nuevo, clase_nueva, reso_nueva, ic_nuevo, telefono_nuevo, check_disc, check_wa, str(fecha_ingreso), usuario_actual))
                                     conexion_write.commit()
                                     conexion_write.close()
                                     st.success(
@@ -168,8 +171,9 @@ def mostrar():
                             miembro_id = df_activos[df_activos['nombre']
                                                     == miembro_baja]['id'].values[0]
                             nuevo_estado = 'Expulsado' if es_veto else 'Inactivo'
-                            cursor_write.execute("UPDATE miembros SET estado=?, fecha_baja=? WHERE id=?", (
-                                nuevo_estado, str(fecha_baja), int(miembro_id)))
+                            usuario_actual = st.session_state.get('usuario', 'Desconocido')
+                            cursor_write.execute("UPDATE miembros SET estado=?, fecha_baja=?, motivo_baja=?, baja_realizada_por=? WHERE id=?", (
+                                nuevo_estado, str(fecha_baja), motivo_baja, usuario_actual, int(miembro_id)))
                             if es_veto:
                                 cursor_write.execute("INSERT INTO sanciones (miembro_id, tipo_sancion_id, motivo, fecha) VALUES (?, 2, ?, ?)", (int(
                                     miembro_id), motivo_baja, str(fecha_baja)))
@@ -266,16 +270,39 @@ def mostrar():
     # ==========================================
     if es_admin:
         with tab_alta_masiva:
-            st.subheader("📥 Alta y Reingreso Masivo")
+            st.subheader("📥 Carga y Actualización Masiva")
             st.markdown(
-                "Sube un archivo `.csv` o `.xlsx`. La única columna estrictamente obligatoria es **Nombre**.")
-            st.info("💡 **Regla del sistema:** Si el jugador ya existía, solo se cambiará su estado a 'Activo' conservando sus estadísticas. Si es nuevo, se creará con datos en cero.")
+                "Sube un archivo `.csv` o `.xlsx` estructurado para actualizar o registrar múltiples miembros del clan.")
+            
+            # --- Generador Dinámico de Plantilla Excel ---
+            import io
+            df_plantilla = pd.DataFrame(columns=['Nombre', 'Clase', 'Resonancia', 'IC', 'Telefono', 'WhatsApp', 'Discord'])
+            # Fila de ejemplo
+            df_plantilla.loc[0] = ['EjemploNombre', 'Nigromante', 1000, 15000, '+123456789', 'Si', 'Si']
+            
+            buffer = io.BytesIO()
+            with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
+                df_plantilla.to_excel(writer, index=False, sheet_name='Plantilla Roster')
+            buffer.seek(0)
+            
+            st.download_button(
+                label="📥 Descargar Plantilla Excel (.xlsx)",
+                data=buffer,
+                file_name="plantilla_miembros_dunedain.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                help="Descarga una plantilla de ejemplo estructurada para rellenar tus datos masivamente"
+            )
+            
+            st.info("💡 **Regla de actualización masiva:**\n"
+                    "- Si el jugador **ya existe y está activo**, se actualizarán su Clase, Resonancia, IC, Teléfono, WhatsApp y Discord con los nuevos datos.\n"
+                    "- Si el jugador **ya existía pero estaba inactivo/expulsado**, se reactivará (estado 'Activo') y se actualizarán sus estadísticas (excepto si tiene veto definitivo).\n"
+                    "- Si el jugador es **nuevo**, se creará desde cero en estado 'Activo' con toda su información provista.")
 
             archivo_masivo = st.file_uploader(
-                "Subir archivo de ingresos:", type=['csv', 'xlsx'])
+                "Subir archivo de roster (.csv o .xlsx):", type=['csv', 'xlsx'])
 
             if archivo_masivo:
-                if st.button("🚀 Procesar Alta Masiva", type="primary"):
+                if st.button("🚀 Procesar Carga Masiva", type="primary"):
                     try:
                         df_masivo = pd.read_csv(archivo_masivo) if archivo_masivo.name.endswith(
                             '.csv') else pd.read_excel(archivo_masivo)
@@ -289,9 +316,11 @@ def mostrar():
                             conexion = conectar_bd()
                             cursor = conexion.cursor()
                             hoy = str(date.today())
+                            usuario_actual = st.session_state.get('usuario', 'Desconocido')
 
-                            # Listas para guardar los nombres y mostrarlos al final
+                            # Listas para reporte visual
                             lista_nuevos = []
+                            lista_actualizados = []
                             lista_reingresos = []
                             lista_bloqueados = []
 
@@ -300,65 +329,94 @@ def mostrar():
                                 if not nom or nom.lower() == 'nan':
                                     continue
 
+                                # Funciones auxiliares robustas de parseo
+                                def limpiar_string(val, default=""):
+                                    if pd.isna(val) or str(val).strip().lower() == 'nan':
+                                        return default
+                                    return str(val).strip()
+
+                                def limpiar_int(val, default=0):
+                                    try:
+                                        if pd.isna(val):
+                                            return default
+                                        return int(float(val))
+                                    except:
+                                        return default
+
+                                cla = limpiar_string(fila.get('Clase'), 'Desconocida')
+                                res = limpiar_int(fila.get('Resonancia'), 0)
+                                ic = limpiar_int(fila.get('IC'), 0)
+                                tel = limpiar_string(fila.get('Telefono'), '')
+                                if tel.endswith('.0'):
+                                    tel = tel[:-2]  # Corregir floats tipo "12345.0"
+                                
+                                wa_str = limpiar_string(fila.get('WhatsApp'), 'No').lower()
+                                disc_str = limpiar_string(fila.get('Discord'), 'No').lower()
+                                
+                                wa = 1 if wa_str in ['si', 'sí', 'yes', 'true', '1'] else 0
+                                disc = 1 if disc_str in ['si', 'sí', 'yes', 'true', '1'] else 0
+
+                                # Consultar existencia en base de datos
                                 cursor.execute(
                                     "SELECT id, estado FROM miembros WHERE LOWER(nombre) = LOWER(?)", (nom,))
                                 bd_data = cursor.fetchone()
 
                                 if bd_data:
                                     id_jugador, estado_actual = bd_data[0], bd_data[1]
-                                    if estado_actual == 'Activo':
-                                        continue
-
+                                    
+                                    # Verificar veto definitivo antes de cualquier acción
                                     cursor.execute(
                                         "SELECT 1 FROM sanciones s JOIN tipos_sancion t ON s.tipo_sancion_id = t.id WHERE s.miembro_id=? AND t.nombre='Definitiva'", (id_jugador,))
                                     if cursor.fetchone():
                                         lista_bloqueados.append(nom)
                                     else:
-                                        cursor.execute(
-                                            "UPDATE miembros SET estado='Activo', fecha_ingreso=?, fecha_baja=NULL WHERE id=?", (hoy, id_jugador))
-                                        lista_reingresos.append(nom)
+                                        if estado_actual != 'Activo':
+                                            # Reactivar y actualizar estadísticas completas
+                                            cursor.execute('''
+                                                UPDATE miembros 
+                                                SET estado='Activo', fecha_ingreso=?, fecha_baja=NULL, clase=?, resonancia=?, ic=?, telefono=?, usa_discord=?, usa_whatsapp=?, alta_realizada_por=? 
+                                                WHERE id=?
+                                            ''', (hoy, cla, res, ic, tel, disc, wa, usuario_actual, id_jugador))
+                                            lista_reingresos.append(nom)
+                                        else:
+                                            # Actualizar estadísticas manteniendo la antigüedad
+                                            cursor.execute('''
+                                                UPDATE miembros 
+                                                SET clase=?, resonancia=?, ic=?, telefono=?, usa_discord=?, usa_whatsapp=? 
+                                                WHERE id=?
+                                            ''', (cla, res, ic, tel, disc, wa, id_jugador))
+                                            lista_actualizados.append(nom)
                                 else:
-                                    cla = str(
-                                        fila.get('Clase', 'Desconocida')).strip()
-                                    res = int(fila.get('Resonancia', 0)) if pd.notna(
-                                        fila.get('Resonancia')) else 0
-                                    ic = int(fila.get('IC', 0)) if pd.notna(
-                                        fila.get('IC')) else 0
-                                    tel = str(fila.get('Telefono', '')).strip()
-                                    wa = 1 if str(fila.get('WhatsApp', '')).strip().lower() in [
-                                        'si', 'true', '1'] else 0
-                                    disc = 1 if str(fila.get('Discord', '')).strip().lower() in [
-                                        'si', 'true', '1'] else 0
-
-                                    cursor.execute("INSERT INTO miembros (nombre, clase, resonancia, ic, telefono, usa_discord, usa_whatsapp, fecha_ingreso, estado) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'Activo')", (
-                                        nom, cla, res, ic, tel, disc, wa, hoy))
+                                    # Insertar miembro completamente nuevo
+                                    cursor.execute('''
+                                        INSERT INTO miembros 
+                                        (nombre, clase, resonancia, ic, telefono, usa_discord, usa_whatsapp, fecha_ingreso, estado, alta_realizada_por) 
+                                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'Activo', ?)
+                                    ''', (nom, cla, res, ic, tel, disc, wa, hoy, usuario_actual))
                                     lista_nuevos.append(nom)
 
                             conexion.commit()
                             conexion.close()
 
-                            # MOSTRAR RESULTADOS DETALLADOS
-                            st.success(f"✅ Proceso finalizado exitosamente.")
+                            st.success(f"🎉 ¡Procesamiento masivo finalizado exitosamente!")
 
                             if lista_nuevos:
-                                st.warning(
-                                    f"⚠️ **{len(lista_nuevos)} Nuevos Miembros (Requieren actualización de datos):**")
+                                st.warning(f"🆕 **{len(lista_nuevos)} Nuevos Miembros Registrados:**")
                                 st.markdown(", ".join(lista_nuevos))
-                                st.info(
-                                    "👉 Ve a la pestaña **'🔍 Buscar y Modificar'** para completar el Teléfono, Clase, Resonancia e IC de estos jugadores.")
+
+                            if lista_actualizados:
+                                st.info(f"🔄 **{len(lista_actualizados)} Miembros Activos Actualizados:**")
+                                st.markdown(", ".join(lista_actualizados))
 
                             if lista_reingresos:
-                                st.info(
-                                    f"🔄 **{len(lista_reingresos)} Reingresos (Jugadores antiguos reactivados):**")
+                                st.success(f"✨ **{len(lista_reingresos)} Reingresos Exitosos (Ex-miembros reactivados):**")
                                 st.markdown(", ".join(lista_reingresos))
 
                             if lista_bloqueados:
-                                st.error(
-                                    f"🚫 **Se ignoraron por tener Veto Definitivo:** {', '.join(lista_bloqueados)}")
+                                st.error(f"🚫 **Se ignoraron por poseer Veto Definitivo:** {', '.join(lista_bloqueados)}")
 
-                            if not lista_nuevos and not lista_reingresos and not lista_bloqueados:
-                                st.info(
-                                    "Todos los jugadores del archivo ya se encontraban activos en el sistema.")
+                            if not lista_nuevos and not lista_actualizados and not lista_reingresos and not lista_bloqueados:
+                                st.info("Todos los jugadores del archivo ya se encontraban activos e idénticos en el sistema.")
 
                     except Exception as e:
                         st.error(f"Error al procesar el archivo: {e}")
@@ -367,27 +425,36 @@ def mostrar():
             st.subheader("💥 Limpieza General de Miembros")
             st.error(
                 "⚠️ **ESTA ACCIÓN ES IRREVERSIBLE:** Dará de baja a TODOS los miembros activos del clan, cambiándolos a estado 'Inactivo'.")
+            
+            motivo_masivo = st.text_area("Motivo de la baja masiva (Ej: Fin de ciclo, limpieza de temporada, etc.):").strip()
             st.markdown("¿Desea continuar con la baja masiva?")
 
             col_si, col_no = st.columns(2)
 
             with col_si:
                 if st.button("✔️ Sí, dar de baja a todos", type="primary", use_container_width=True):
-                    try:
-                        conexion = conectar_bd()
-                        cursor = conexion.cursor()
-                        hoy = str(date.today())
+                    if not motivo_masivo:
+                        st.error("❌ El motivo de la baja masiva es obligatorio.")
+                    else:
+                        try:
+                            conexion = conectar_bd()
+                            cursor = conexion.cursor()
+                            hoy = str(date.today())
+                            usuario_actual = st.session_state.get('usuario', 'Desconocido')
 
-                        cursor.execute(
-                            "UPDATE miembros SET estado='Inactivo', fecha_baja=? WHERE estado='Activo'", (hoy,))
-                        afectados = cursor.rowcount
-                        conexion.commit()
-                        conexion.close()
+                            cursor.execute(
+                                "UPDATE miembros SET estado='Inactivo', fecha_baja=?, motivo_baja=?, baja_realizada_por=? WHERE estado='Activo'", 
+                                (hoy, motivo_masivo, usuario_actual)
+                            )
+                            afectados = cursor.rowcount
+                            conexion.commit()
+                            conexion.close()
 
-                        st.success(
-                            f"✅ Baja masiva ejecutada. {afectados} miembros pasaron a estado Inactivo.")
-                    except Exception as e:
-                        st.error(f"Error crítico en base de datos: {e}")
+                            st.success(
+                                f"✅ Baja masiva ejecutada. {afectados} miembros pasaron a estado Inactivo.")
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"Error crítico en base de datos: {e}")
 
             with col_no:
                 if st.button("❌ No, cancelar acción", use_container_width=True):

@@ -3,7 +3,7 @@ from werkzeug.security import check_password_hash, generate_password_hash
 from database import conectar_bd
 
 # Importamos todos los módulos
-from modulos import datos_resumen, alta_baja, asistencia, sanciones, estadisticas, admin_usuarios, armador_salas
+from modulos import datos_resumen, alta_baja, asistencia, sanciones, estadisticas, admin_usuarios, armador_salas, ciclo_inmortal
 
 st.set_page_config(page_title="ÐÛΝΞÐΛIN Dashboard",
                    page_icon="🛡️", layout="wide")
@@ -135,6 +135,7 @@ else:
     if st.session_state['rol'] == 'admin':
         st.sidebar.divider()
         opciones_menu.append("🔐 Gestión de Accesos")
+        opciones_menu.append("⏳ Administrar Ciclo Inmortal")
 
     st.sidebar.divider()
     opciones_menu.append("🚪 Cerrar Sesión")
@@ -156,6 +157,8 @@ else:
         armador_salas.mostrar()
     elif menu == "🔐 Gestión de Accesos":
         admin_usuarios.mostrar()
+    elif menu == "⏳ Administrar Ciclo Inmortal":
+        ciclo_inmortal.mostrar()
     elif menu == "🚪 Cerrar Sesión":
         st.session_state['logeado'] = False
         st.session_state['usuario'] = ""

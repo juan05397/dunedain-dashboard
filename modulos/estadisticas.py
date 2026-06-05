@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd
 import sqlite3
-from database import conectar_bd
+from database import conectar_bd, obtener_ciclo_activo
 
 
 def calcular_efectividad(kills, asistencias, muertes):
@@ -20,10 +20,20 @@ def mostrar():
     # SECCIÓN 1: VALIDACIÓN Y CARGA DEL ARCHIVO
     # ==========================================
     st.subheader("📤 Subir Resultados (Solo CSV o XLSX)")
-    archivo = st.file_uploader(
-        "Arrastra aquí el archivo de estadísticas de la batalla", type=['csv', 'xlsx'])
+    
+    ciclo_activo = obtener_ciclo_activo()
+    if not ciclo_activo:
+        st.error("❌ No existe un ciclo inmortal activo en el sistema.")
+        st.info("💡 Un administrador debe crear un ciclo inmortal activo para poder registrar estadísticas de guerra.")
+        archivo = None
+    else:
+        ciclo_id = ciclo_activo[0]
+        ciclo_actual_str = f"Ciclo {ciclo_id}"
+        st.info(f"📝 Las nuevas estadísticas se registrarán bajo el **{ciclo_actual_str}** (Activo).")
+        archivo = st.file_uploader(
+            "Arrastra aquí el archivo de estadísticas de la batalla", type=['csv', 'xlsx'])
 
-    if archivo is not None:
+    if archivo is not None and ciclo_activo:
         try:
             # Detectar formato
             if archivo.name.endswith('.csv'):
@@ -73,7 +83,7 @@ def mostrar():
                             fila['Kills'], fila['Asistencias'], fila['Muertes'])
                         registros_validos.append((
                             miembros_bd[nom_lower],
-                            "Global",  # Se elimina el concepto de ciclo en este módulo según tu solicitud
+                            ciclo_actual_str,  # Registro histórico bajo el ciclo activo
                             fila['Kills'],
                             fila['Asistencias'],
                             fila['Muertes'],
@@ -127,8 +137,27 @@ def mostrar():
 
     try:
         conexion = conectar_bd()
-        # Esta consulta cruza los miembros con sus estadísticas.
-        # El "WHERE m.estado = 'Activo'" asegura que si das de baja a alguien, desaparece automáticamente de aquí.
+        df_ciclos_disponibles = pd.read_sql_query("SELECT id, estado FROM ciclos_inmortales ORDER BY id DESC", conexion)
+        conexion.close()
+    except Exception:
+        df_ciclos_disponibles = pd.DataFrame()
+
+    ciclo_filtro = "Global"
+    if not df_ciclos_disponibles.empty:
+        opciones_ciclos = [f"Ciclo {r['id']} ({r['estado']})" for _, r in df_ciclos_disponibles.iterrows()]
+        idx_defecto = 0
+        for idx, r in enumerate(df_ciclos_disponibles.itertuples()):
+            if r.estado == 'Activo':
+                idx_defecto = idx
+                break
+        ciclo_seleccionado_str = st.selectbox("Seleccionar Ciclo Inmortal para visualizar:", opciones_ciclos, index=idx_defecto)
+        ciclo_seleccionado_id = int(ciclo_seleccionado_str.split(" ")[1])
+        ciclo_filtro = f"Ciclo {ciclo_seleccionado_id}"
+    else:
+        st.warning("⚠️ No hay ciclos inmortales creados. Crea uno primero en 'Administrar Ciclo Inmortal'. Se mostrarán estadísticas globales de fallback.")
+
+    try:
+        # Esta consulta cruza los miembros con sus estadísticas filtradas por ciclo.
         query = '''
             SELECT 
                 m.nombre AS Jugador,
@@ -137,11 +166,12 @@ def mostrar():
                 SUM(e.asistencias) AS Total_Asistencias,
                 SUM(e.muertes_sufridas) AS Total_Muertes
             FROM miembros m
-            LEFT JOIN estadisticas_guerra e ON m.id = e.miembro_id
+            LEFT JOIN estadisticas_guerra e ON m.id = e.miembro_id AND e.ciclo = ?
             WHERE m.estado = 'Activo'
             GROUP BY m.id
         '''
-        df_stats = pd.read_sql_query(query, conexion)
+        conexion = conectar_bd()
+        df_stats = pd.read_sql_query(query, conexion, params=(ciclo_filtro,))
         conexion.close()
 
         # Limpieza para aquellos que son nuevos y aún no tienen guerras jugadas
@@ -184,6 +214,14 @@ def mostrar():
                 with t_cols[i]:
                     st.info(
                         f"**{medallas[i]}**\n\n**{top_3.loc[i, 'Jugador']}** ({top_3.loc[i, 'Clase']})\n\nPuntaje: **{top_3.loc[i, 'Puntaje Efectividad']}**")
+
+            # --- AGREGADO: GRÁFICO DE EFECTIVIDAD POR CLASE ---
+            st.write("")
+            st.markdown("### 📈 Rendimiento Promedio (KDA) por Clase")
+            df_prom_kda = df_participantes.groupby('Clase')['Puntaje Efectividad'].mean().reset_index()
+            df_prom_kda.columns = ['Clase', 'Efectividad Promedio']
+            df_prom_kda['Efectividad Promedio'] = df_prom_kda['Efectividad Promedio'].round(2)
+            st.bar_chart(df_prom_kda.set_index('Clase'), y='Efectividad Promedio', color='#2ecc71', height=250)
 
             # --- AGREGADO: GRILLA INTERACTIVA CON BUSCADOR ---
             st.write("")
