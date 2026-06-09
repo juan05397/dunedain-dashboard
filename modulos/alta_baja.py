@@ -5,6 +5,34 @@ from datetime import date
 from database import conectar_bd
 
 
+def normalizar_clase(nombre_clase, clases_db=None):
+    if not nombre_clase:
+        return "Desconocida"
+    clase_limpia = nombre_clase.strip()
+    clase_lower = clase_limpia.lower()
+    mapeo_alias = {
+        "cruzado": "Guerrero Divino",
+        "mago": "Arcanista",
+        "caballero de sangre": "Caballero Sangriento",
+        "tempestad": "Tempestario"
+    }
+    if clase_lower in mapeo_alias:
+        return mapeo_alias[clase_lower]
+    if clases_db is None:
+        try:
+            conn = conectar_bd()
+            cursor = conn.cursor()
+            cursor.execute("SELECT nombre FROM clases")
+            clases_db = [c[0] for c in cursor.fetchall()]
+            conn.close()
+        except:
+            clases_db = ["Bárbaro", "Guerrero Divino", "Cazador de Demonios", "Monje", "Nigromante", "Arcanista", "Caballero Sangriento", "Tempestario", "Druida", "Brujo", "Desconocida"]
+    for c in clases_db:
+        if c.lower() == clase_lower:
+            return c
+    return "Desconocida"
+
+
 def mostrar():
     st.title("🚪 Gestión de Ingresos y Salidas del Clan")
 
@@ -100,9 +128,17 @@ def mostrar():
                                 st.error(f"Error: {e}")
 
                 if not desea_baja_inmediata:
+                    try:
+                        conn_clases = conectar_bd()
+                        cursor_clases = conn_clases.cursor()
+                        cursor_clases.execute("SELECT nombre FROM clases ORDER BY id")
+                        lista_clases = [c[0] for c in cursor_clases.fetchall()]
+                        conn_clases.close()
+                    except:
+                        lista_clases = ["Bárbaro", "Guerrero Divino", "Cazador de Demonios", "Monje", "Nigromante", "Arcanista", "Caballero Sangriento", "Tempestario", "Druida", "Brujo", "Desconocida"]
+                    
                     with st.form("form_alta_normal"):
-                        clase_nueva = st.selectbox("Clase:", ["Nigromante", "Guerrero Divino", "Cazador de Demonios",
-                                                   "Bárbaro", "Monje", "Arcanista", "Druida", "Tempestario", "Caballero Sangriento"])
+                        clase_nueva = st.selectbox("Clase:", lista_clases)
                         col_a, col_b = st.columns(2)
                         with col_a:
                             reso_nueva = st.number_input(
@@ -128,12 +164,13 @@ def mostrar():
                                     conexion_write = conectar_bd()
                                     cursor_write = conexion_write.cursor()
                                     usuario_actual = st.session_state.get('usuario', 'Desconocido')
+                                    clase_nueva_norm = normalizar_clase(clase_nueva)
                                     if miembro_bd:
                                         cursor_write.execute("UPDATE miembros SET clase=?, resonancia=?, ic=?, telefono=?, usa_discord=?, usa_whatsapp=?, fecha_ingreso=?, estado='Activo', fecha_baja=NULL, alta_realizada_por=? WHERE id=?", (
-                                            clase_nueva, reso_nueva, ic_nuevo, telefono_nuevo, check_disc, check_wa, str(fecha_ingreso), usuario_actual, miembro_bd[0]))
+                                            clase_nueva_norm, reso_nueva, ic_nuevo, telefono_nuevo, check_disc, check_wa, str(fecha_ingreso), usuario_actual, miembro_bd[0]))
                                     else:
                                         cursor_write.execute("INSERT INTO miembros (nombre, clase, resonancia, ic, telefono, usa_discord, usa_whatsapp, fecha_ingreso, estado, alta_realizada_por) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'Activo', ?)", (
-                                            nombre_nuevo, clase_nueva, reso_nueva, ic_nuevo, telefono_nuevo, check_disc, check_wa, str(fecha_ingreso), usuario_actual))
+                                            nombre_nuevo, clase_nueva_norm, reso_nueva, ic_nuevo, telefono_nuevo, check_disc, check_wa, str(fecha_ingreso), usuario_actual))
                                     conexion_write.commit()
                                     conexion_write.close()
                                     st.success(
@@ -218,9 +255,16 @@ def mostrar():
             st.markdown(
                 f"Modificando a: **{jugador_sel}** | Estado actual: <span style='color:{color_estado}; font-weight:bold'>{jugador_data['estado']}</span>", unsafe_allow_html=True)
 
+            try:
+                conn_clases = conectar_bd()
+                cursor_clases = conn_clases.cursor()
+                cursor_clases.execute("SELECT nombre FROM clases ORDER BY id")
+                clases_permitidas = [c[0] for c in cursor_clases.fetchall()]
+                conn_clases.close()
+            except:
+                clases_permitidas = ["Bárbaro", "Guerrero Divino", "Cazador de Demonios", "Monje", "Nigromante", "Arcanista", "Caballero Sangriento", "Tempestario", "Druida", "Brujo", "Desconocida"]
+
             with st.form("form_modificar"):
-                clases_permitidas = ["Nigromante", "Guerrero Divino", "Cazador de Demonios", "Bárbaro",
-                                     "Monje", "Arcanista", "Druida", "Tempestario", "Caballero Sangriento", "Desconocida"]
                 clase_actual = jugador_data['clase']
                 idx_clase = clases_permitidas.index(
                     clase_actual) if clase_actual in clases_permitidas else 0
@@ -251,11 +295,12 @@ def mostrar():
                         try:
                             conexion_write = conectar_bd()
                             cursor_write = conexion_write.cursor()
+                            clase_mod_norm = normalizar_clase(clase_mod)
                             cursor_write.execute('''
                                 UPDATE miembros 
                                 SET clase=?, resonancia=?, ic=?, telefono=?, usa_discord=?, usa_whatsapp=? 
                                 WHERE id=?
-                            ''', (clase_mod, reso_mod, ic_mod, telefono_mod, check_disc_mod, check_wa_mod, int(jugador_data['id'])))
+                            ''', (clase_mod_norm, reso_mod, ic_mod, telefono_mod, check_disc_mod, check_wa_mod, int(jugador_data['id'])))
                             conexion_write.commit()
                             conexion_write.close()
                             st.success(
@@ -318,6 +363,13 @@ def mostrar():
                             hoy = str(date.today())
                             usuario_actual = st.session_state.get('usuario', 'Desconocido')
 
+                            # Cargar clases una sola vez para optimizar la carga masiva
+                            try:
+                                cursor.execute("SELECT nombre FROM clases")
+                                lista_clases_masiva = [c[0] for c in cursor.fetchall()]
+                            except:
+                                lista_clases_masiva = None
+
                             # Listas para reporte visual
                             lista_nuevos = []
                             lista_actualizados = []
@@ -343,7 +395,7 @@ def mostrar():
                                     except:
                                         return default
 
-                                cla = limpiar_string(fila.get('Clase'), 'Desconocida')
+                                cla = normalizar_clase(limpiar_string(fila.get('Clase'), 'Desconocida'), clases_db=lista_clases_masiva)
                                 res = limpiar_int(fila.get('Resonancia'), 0)
                                 ic = limpiar_int(fila.get('IC'), 0)
                                 tel = limpiar_string(fila.get('Telefono'), '')

@@ -39,6 +39,31 @@ def preparar_db():
         except sqlite3.OperationalError:
             pass
             
+    # Crear e inicializar la tabla de clases
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS clases (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            nombre TEXT UNIQUE
+        )
+    ''')
+    cursor.execute("SELECT COUNT(*) FROM clases")
+    if cursor.fetchone()[0] == 0:
+        clases_defecto = [
+            "Bárbaro", "Guerrero Divino", "Cazador de Demonios", "Monje", "Nigromante",
+            "Arcanista", "Caballero Sangriento", "Tempestario", "Druida", "Brujo", "Desconocida"
+        ]
+        cursor.executemany("INSERT INTO clases (nombre) VALUES (?)", [(c,) for c in clases_defecto])
+        
+    # Crear la tabla de alias de WhatsApp
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS alias_whatsapp (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            whatsapp_name TEXT UNIQUE,
+            miembro_id INTEGER,
+            FOREIGN KEY (miembro_id) REFERENCES miembros(id) ON DELETE CASCADE
+        )
+    ''')
+            
     conn.commit()
     conn.close()
 

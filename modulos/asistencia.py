@@ -2,8 +2,72 @@ import streamlit as st
 import sqlite3
 import pandas as pd
 import re
+import os
+import sys
 from datetime import date
 from database import conectar_bd, obtener_ciclo_activo
+import pytesseract
+from PIL import Image, ImageOps
+
+# Configurar ruta de tesseract en Windows si aplica
+if os.name == 'nt':
+    pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'
+
+def extraer_nombres_ocr(imagen_upload):
+    try:
+        image = Image.open(imagen_upload)
+        # Preprocesamiento obligatorio: escala de grises y mejora de contraste
+        image = ImageOps.grayscale(image)
+        image = ImageOps.autocontrast(image)
+        
+        # Intentar extraer texto con español (spa) e inglés (eng) por compatibilidad
+        texto = pytesseract.image_to_string(image, lang='spa+eng')
+        return [line.strip() for line in texto.split('\n') if line.strip()]
+    except pytesseract.pytesseract.TesseractNotFoundError:
+        st.error("⚠️ El motor Tesseract-OCR no está instalado en este sistema o no se encuentra en el PATH. Si estás en local en Windows, asegúrate de instalar Tesseract en 'C:\\Program Files\\Tesseract-OCR\\tesseract.exe'.")
+        return []
+    except Exception as e:
+        st.error(f"Error al procesar la imagen: {e}")
+        return []
+
+def limpiar_lineas_ocr(lineas):
+    lineas_limpias = []
+    for linea in lineas:
+        l = linea.strip()
+        # Omitir si es muy corta (basura)
+        if len(l) < 3:
+            continue
+        
+        # Eliminar marcas de tiempo (ej: "12:30", "12:30 p.m.", "12:30 pm", "15:45", etc.)
+        l = re.sub(r'\b\d{1,2}:\d{2}(?:\s?[ap]\.?\s?m\.?)?\b', '', l, flags=re.IGNORECASE)
+        
+        # Eliminar números de orden, guiones y caracteres extraños al inicio (ej. "1. ", "+ ", "- ", etc.)
+        l_clean = re.sub(r'^[+\d\.\-\s]+', '', l)
+        
+        # Quitar emoticonos
+        l_clean = re.sub(r'[\u2600-\u27BF\U0001f300-\U0001f64f\U0001f680-\U0001f6ff]', '', l_clean)
+        l_clean = l_clean.strip()
+        
+        # Omitir palabras basura comunes de la interfaz de WhatsApp
+        l_lower = l_clean.lower()
+        palabras_basura = [
+            "voto", "votos", "encuesta", "creador", "creó", "opciones", 
+            "responder", "reenviar", "copiar", "eliminar", "info", "detalles",
+            "ayer", "hoy", "pm", "am", "p.m.", "a.m."
+        ]
+        es_basura = False
+        for wb in palabras_basura:
+            if wb in l_lower:
+                es_basura = True
+                break
+        if es_basura:
+            continue
+        
+        if len(l_clean) >= 3:
+            lineas_limpias.append(l_clean)
+            
+    return list(set(lineas_limpias))
+
 
 
 def preparar_bd():
@@ -124,35 +188,285 @@ def mostrar():
 
     # --- PASO 1: CARGA DE ENCUESTA ---
     with tab_encuesta:
-        st.subheader("Resultados de la Encuesta Previa")
+        st.subheader("Resultados de la Encuesta Previa (WhatsApp)")
         st.markdown(
-            "Pega aquí las listas de jugadores debajo de cada opción de tu encuesta de WhatsApp.")
+            "Sube capturas de pantalla de los votos de WhatsApp para procesarlos con OCR. Puedes subir múltiples capturas por opción.")
 
         col_si, col_no, col_duda = st.columns(3)
         with col_si:
-            txt_si = st.text_area("🟢 Votaron: SÍ PUEDO", height=200)
+            files_si = st.file_uploader("🟢 Votaron: SÍ PUEDO", type=["png", "jpg", "jpeg"], accept_multiple_files=True, key="files_si")
         with col_no:
-            txt_no = st.text_area("🔴 Votaron: NO PUEDO", height=200)
+            files_no = st.file_uploader("🔴 Votaron: NO PUEDO", type=["png", "jpg", "jpeg"], accept_multiple_files=True, key="files_no")
         with col_duda:
-            txt_duda = st.text_area("🟡 Votaron: NO ASEGURO", height=200)
+            files_duda = st.file_uploader("🟡 Votaron: NO ASEGURO", type=["png", "jpg", "jpeg"], accept_multiple_files=True, key="files_duda")
 
-        if st.button("💾 Guardar Encuesta", type="primary"):
-            errores_globales = []
-            exito_total = 0
+        col_btn1, col_btn2 = st.columns([1, 1])
+        with col_btn1:
+            btn_procesar = st.button("🔍 Procesar Imágenes", type="primary", use_container_width=True)
+        with col_btn2:
+            btn_limpiar = st.button("🗑️ Limpiar Carga", use_container_width=True)
 
-            e1, err1 = procesar_y_guardar(txt_si, 'intencion', 'Sí puedo')
-            e2, err2 = procesar_y_guardar(txt_no, 'intencion', 'No puedo')
-            e3, err3 = procesar_y_guardar(txt_duda, 'intencion', 'No aseguro')
+        if btn_limpiar:
+            for k in ['votos_reconocidos', 'votos_desconocidos', 'votos_no_votaron', 'votos_si_ocr', 'votos_no_ocr', 'votos_duda_ocr']:
+                if k in st.session_state:
+                    del st.session_state[k]
+            st.success("Carga limpiada correctamente.")
+            st.rerun()
 
-            exito_total = e1 + e2 + e3
-            errores_globales.extend(err1 + err2 + err3)
+        if btn_procesar:
+            # Procesar "SÍ PUEDO"
+            nombres_si = []
+            if files_si:
+                for f in files_si:
+                    nombres_si.extend(extraer_nombres_ocr(f))
+            
+            # Procesar "NO PUEDO"
+            nombres_no = []
+            if files_no:
+                for f in files_no:
+                    nombres_no.extend(extraer_nombres_ocr(f))
+                    
+            # Procesar "NO ASEGURO"
+            nombres_duda = []
+            if files_duda:
+                for f in files_duda:
+                    nombres_duda.extend(extraer_nombres_ocr(f))
+                    
+            # Limpiar y guardar en session state
+            st.session_state['votos_si_ocr'] = limpiar_lineas_ocr(nombres_si)
+            st.session_state['votos_no_ocr'] = limpiar_lineas_ocr(nombres_no)
+            st.session_state['votos_duda_ocr'] = limpiar_lineas_ocr(nombres_duda)
+            
+            # Ejecutar análisis
+            try:
+                conexion = conectar_bd()
+                cursor = conexion.cursor()
+                cursor.execute("SELECT id, nombre FROM miembros WHERE estado='Activo'")
+                miembros_activos = cursor.fetchall()
+                
+                cursor.execute("SELECT whatsapp_name, miembro_id FROM alias_whatsapp")
+                aliases = cursor.fetchall()
+                conexion.close()
+            except Exception as e:
+                st.error(f"Error de base de datos: {e}")
+                miembros_activos = []
+                aliases = []
+                
+            miembros_map = {m[1].lower(): (m[0], m[1]) for m in miembros_activos}
+            alias_map = {a[0].lower(): a[1] for a in aliases}
+            miembro_id_map = {m[0]: m[1] for m in miembros_activos}
+            
+            reconocidos = []
+            desconocidos = []
+            reconocidos_ids = set()
+            
+            votos_por_intencion = [
+                ('Sí puedo', st.session_state.get('votos_si_ocr', [])),
+                ('No puedo', st.session_state.get('votos_no_ocr', [])),
+                ('No aseguro', st.session_state.get('votos_duda_ocr', []))
+            ]
+            
+            for intencion, nombres in votos_por_intencion:
+                for nom_wa in nombres:
+                    nom_wa_l = nom_wa.lower()
+                    if nom_wa_l in miembros_map:
+                        m_id, m_nombre = miembros_map[nom_wa_l]
+                        reconocidos.append({
+                            "nombre_whatsapp": nom_wa,
+                            "nombre_miembro": m_nombre,
+                            "miembro_id": m_id,
+                            "intencion": intencion
+                        })
+                        reconocidos_ids.add(m_id)
+                    elif nom_wa_l in alias_map:
+                        m_id = alias_map[nom_wa_l]
+                        if m_id in miembro_id_map:
+                            reconocidos.append({
+                                "nombre_whatsapp": nom_wa,
+                                "nombre_miembro": miembro_id_map[m_id],
+                                "miembro_id": m_id,
+                                "intencion": intencion
+                            })
+                            reconocidos_ids.add(m_id)
+                        else:
+                            desconocidos.append({
+                                "nombre_whatsapp": nom_wa,
+                                "intencion": intencion
+                            })
+                    else:
+                        desconocidos.append({
+                            "nombre_whatsapp": nom_wa,
+                            "intencion": intencion
+                        })
+                        
+            no_votaron = []
+            for m_id, m_nombre in miembros_activos:
+                if m_id not in reconocidos_ids:
+                    no_votaron.append({
+                        "miembro_id": m_id,
+                        "nombre": m_nombre
+                    })
+                    
+            st.session_state['votos_reconocidos'] = reconocidos
+            st.session_state['votos_desconocidos'] = desconocidos
+            st.session_state['votos_no_votaron'] = no_votaron
+            
+            st.success("🎉 Capturas procesadas correctamente. Valida los resultados abajo.")
+            st.rerun()
 
-            if exito_total > 0:
-                st.success(
-                    f"✅ Se registraron las intenciones de {exito_total} miembros activos.")
-            if errores_globales:
-                st.error("❌ Los siguientes nombres no están en la lista de activos o están mal escritos:\n" +
-                         ", ".join(set(errores_globales)))
+        # UI de resolución de conflictos y guardado final
+        if 'votos_reconocidos' in st.session_state:
+            reconocidos = st.session_state.get('votos_reconocidos', [])
+            desconocidos = st.session_state.get('votos_desconocidos', [])
+            no_votaron = st.session_state.get('votos_no_votaron', [])
+            
+            st.write("---")
+            st.subheader("⚠️ Validación y Resolución de Conflictos")
+            
+            if desconocidos:
+                st.warning(f"Se encontraron **{len(desconocidos)}** nombres de WhatsApp no reconocidos. Debes asociarlos con un miembro activo o elegir 'Ignorar' antes de guardar:")
+                
+                try:
+                    conn = conectar_bd()
+                    cursor = conn.cursor()
+                    cursor.execute("SELECT id, nombre FROM miembros WHERE estado='Activo' ORDER BY nombre")
+                    activos_db = cursor.fetchall()
+                    conn.close()
+                except:
+                    activos_db = []
+                    
+                opciones_activos = ["Ignorar / No es del clan"] + [a[1] for a in activos_db]
+                activos_map = {a[1]: a[0] for a in activos_db}
+                
+                with st.form("form_alias_resolucion"):
+                    resoluciones = {}
+                    for i, unk in enumerate(desconocidos):
+                        st.markdown(f"Captura: **{unk['nombre_whatsapp']}** (Voto: `{unk['intencion']}`)")
+                        resoluciones[i] = st.selectbox(
+                            "Asociar con miembro del clan:",
+                            opciones_activos,
+                            key=f"alias_sel_{i}"
+                        )
+                        st.write("")
+                        
+                    btn_guardar_alias = st.form_submit_button("💾 Guardar Alias y Validar")
+                    
+                    if btn_guardar_alias:
+                        nuevos_reconocidos = list(reconocidos)
+                        nuevos_desconocidos = []
+                        
+                        try:
+                            conn_alias = conectar_bd()
+                            cursor_alias = conn_alias.cursor()
+                            
+                            for i, unk in enumerate(desconocidos):
+                                seleccion = resoluciones[i]
+                                if seleccion != "Ignorar / No es del clan":
+                                    miembro_id = activos_map[seleccion]
+                                    cursor_alias.execute(
+                                        "INSERT OR IGNORE INTO alias_whatsapp (whatsapp_name, miembro_id) VALUES (?, ?)",
+                                        (unk['nombre_whatsapp'], miembro_id)
+                                    )
+                                    nuevos_reconocidos.append({
+                                        "nombre_whatsapp": unk['nombre_whatsapp'],
+                                        "nombre_miembro": seleccion,
+                                        "miembro_id": miembro_id,
+                                        "intencion": unk['intencion']
+                                    })
+                                else:
+                                    # Si es ignorar, no se agrega a reconocidos ni a desconocidos (se descarta)
+                                    pass
+                                    
+                            conn_alias.commit()
+                            conn_alias.close()
+                            
+                            st.session_state['votos_reconocidos'] = nuevos_reconocidos
+                            st.session_state['votos_desconocidos'] = [] # Limpiado
+                            
+                            reconocidos_ids = {r['miembro_id'] for r in nuevos_reconocidos}
+                            nuevos_no_votaron = [nv for nv in no_votaron if nv['miembro_id'] not in reconocidos_ids]
+                            st.session_state['votos_no_votaron'] = nuevos_no_votaron
+                            
+                            st.success("✅ Alias guardados correctamente y lista actualizada.")
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"Error al guardar los alias: {e}")
+            else:
+                st.success("✨ ¡Todos los nombres reconocidos y validados!")
+                
+            st.divider()
+            st.subheader("💾 Guardado Final")
+            st.write(f"📊 **Resumen actual:**")
+            st.write(f"- Miembros reconocidos y validados: **{len(reconocidos)}**")
+            st.write(f"- Miembros que no votaron: **{len(no_votaron)}**")
+            
+            aplicar_no_voto = st.checkbox("¿Deseas aplicar la inasistencia (No votó) a los que faltan?", value=True)
+            
+            guardado_deshabilitado = len(desconocidos) > 0
+            if guardado_deshabilitado:
+                st.warning("⚠️ Hay nombres desconocidos sin resolver. El guardado final está bloqueado.")
+                
+            btn_guardar_final = st.button(
+                "Confirmar y Guardar Asistencia",
+                disabled=guardado_deshabilitado,
+                type="primary",
+                use_container_width=True
+            )
+            
+            if btn_guardar_final:
+                try:
+                    conn_save = conectar_bd()
+                    cursor_save = conn_save.cursor()
+                    
+                    # Guardar reconocidos
+                    for rec in reconocidos:
+                        m_id = rec['miembro_id']
+                        intencion_val = rec['intencion']
+                        
+                        cursor_save.execute("SELECT id FROM asistencia WHERE miembro_id=? AND evento_id=? AND ciclo=? AND fecha=?",
+                                            (m_id, int(evento_id), ciclo, str(fecha_evento)))
+                        registro = cursor_save.fetchone()
+                        
+                        if registro:
+                            cursor_save.execute(
+                                "UPDATE asistencia SET intencion=? WHERE id=?",
+                                (intencion_val, registro[0])
+                            )
+                        else:
+                            cursor_save.execute('''INSERT INTO asistencia 
+                                              (miembro_id, evento_id, ciclo, fecha, estado_asistencia, intencion, asistio_realmente) 
+                                              VALUES (?, ?, ?, ?, 'Procesado', ?, 0)''',
+                                           (m_id, int(evento_id), ciclo, str(fecha_evento), intencion_val))
+                            
+                    # Guardar no votaron si se seleccionó
+                    if aplicar_no_voto:
+                        for nv in no_votaron:
+                            m_id = nv['miembro_id']
+                            cursor_save.execute("SELECT id FROM asistencia WHERE miembro_id=? AND evento_id=? AND ciclo=? AND fecha=?",
+                                                (m_id, int(evento_id), ciclo, str(fecha_evento)))
+                            registro = cursor_save.fetchone()
+                            
+                            if registro:
+                                cursor_save.execute(
+                                    "UPDATE asistencia SET intencion='No votó' WHERE id=?",
+                                    (registro[0],)
+                                )
+                            else:
+                                cursor_save.execute('''INSERT INTO asistencia 
+                                                  (miembro_id, evento_id, ciclo, fecha, estado_asistencia, intencion, asistio_realmente) 
+                                                  VALUES (?, ?, ?, ?, 'Procesado', 'No votó', 0)''',
+                                               (m_id, int(evento_id), ciclo, str(fecha_evento)))
+                                
+                    conn_save.commit()
+                    conn_save.close()
+                    st.success("🎉 ¡Asistencia del evento guardada correctamente en la base de datos!")
+                    
+                    for k in ['votos_reconocidos', 'votos_desconocidos', 'votos_no_votaron', 'votos_si_ocr', 'votos_no_ocr', 'votos_duda_ocr']:
+                        if k in st.session_state:
+                            del st.session_state[k]
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"Error al guardar asistencia final: {e}")
 
     # --- PASO 2: CARGA REAL ---
     with tab_real:
