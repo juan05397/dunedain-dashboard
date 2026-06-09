@@ -125,7 +125,7 @@ else:
     # Aquí está la lista con la coma corregida y el Armador incluido
     opciones_menu = [
         "📊 Datos y Resumen",
-        "🚪 Alta / Baja de Miembros",
+        "📥 Ingreso / 📤 Egreso",
         "📝 Asistencia Masiva",
         "⚖️ Sanciones y Advertencias",
         "⚔️ Estadísticas de Guerra",
@@ -146,7 +146,7 @@ else:
     # Navegación
     if menu == "📊 Datos y Resumen":
         datos_resumen.mostrar()
-    elif menu == "🚪 Alta / Baja de Miembros":
+    elif menu == "📥 Ingreso / 📤 Egreso":
         alta_baja.mostrar()
     elif menu == "📝 Asistencia Masiva":
         asistencia.mostrar()

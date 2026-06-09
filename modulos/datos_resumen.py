@@ -42,7 +42,8 @@ def mostrar():
                     st.markdown("<h5 style='text-align: center; color: #a9b0ba;'>👥 Distribución de Clases Activas</h5>", unsafe_allow_html=True)
                     df_clases = df_activos['clase'].value_counts().reset_index()
                     df_clases.columns = ['Clase', 'Cantidad']
-                    st.bar_chart(df_clases.set_index('Clase'), y='Cantidad', color='#4DA8DA', height=300)
+                    df_clases = df_clases.sort_values(by='Cantidad', ascending=False)
+                    st.bar_chart(df_clases.set_index('Clase'), y='Cantidad', color='#4DA8DA', height=300, horizontal=True)
                 
                 with col_chart2:
                     st.markdown("<h5 style='text-align: center; color: #a9b0ba;'>💎 Fuerza: Resonancia vs. Índice de Combate (IC)</h5>", unsafe_allow_html=True)
@@ -54,7 +55,8 @@ def mostrar():
                 df_prom_reso = df_activos.groupby('clase')['resonancia'].mean().reset_index()
                 df_prom_reso.columns = ['Clase', 'Resonancia Promedio']
                 df_prom_reso['Resonancia Promedio'] = df_prom_reso['Resonancia Promedio'].fillna(0).astype(int)
-                st.bar_chart(df_prom_reso.set_index('Clase'), y='Resonancia Promedio', color='#f39c12', height=250)
+                df_prom_reso = df_prom_reso.sort_values(by='Resonancia Promedio', ascending=False)
+                st.bar_chart(df_prom_reso.set_index('Clase'), y='Resonancia Promedio', color='#f39c12', height=250, horizontal=True)
 
         st.divider()
 
@@ -141,7 +143,7 @@ def mostrar():
             # Controles interactivos de Filtro
             col_fil1, col_fil2, col_fil3 = st.columns(3)
             with col_fil1:
-                nombre_busqueda = st.text_input("Buscar por Nombre (Nick):", placeholder="🔍 Ej: Juan...").strip()
+                nombre_busqueda = st.text_input("Buscar por Nombre o Teléfono:", placeholder="🔍 Ej: Juan o +346...").strip()
             with col_fil2:
                 clases_busqueda = st.multiselect(
                     "Filtrar por Clase:",
@@ -171,7 +173,10 @@ def mostrar():
                 # Aplicación de filtros
                 df_filtrado = df_todos.copy()
                 if nombre_busqueda:
-                    df_filtrado = df_filtrado[df_filtrado['nombre'].str.contains(nombre_busqueda, case=False)]
+                    df_filtrado = df_filtrado[
+                        df_filtrado['nombre'].str.contains(nombre_busqueda, case=False) |
+                        df_filtrado['telefono'].fillna('').astype(str).str.contains(nombre_busqueda, case=False)
+                    ]
                 if clases_busqueda:
                     df_filtrado = df_filtrado[df_filtrado['clase'].isin(clases_busqueda)]
                 if solo_activos_sel:

@@ -34,7 +34,7 @@ def normalizar_clase(nombre_clase, clases_db=None):
 
 
 def mostrar():
-    st.title("🚪 Gestión de Ingresos y Salidas del Clan")
+    st.title("📥 Ingreso / 📤 Egreso del Clan")
 
     # 1. Control de Permisos Dinámico
     es_admin = st.session_state.get('rol') == 'admin'
@@ -42,7 +42,7 @@ def mostrar():
     nombres_pestanas = ["🆕 Alta Individual",
                         "❌ Baja Individual", "🔍 Buscar y Modificar"]
     if es_admin:
-        nombres_pestanas.extend(["📥 Alta Masiva (CSV)", "💥 Baja Masiva"])
+        nombres_pestanas.extend(["📥 Alta Masiva (CSV)", "💥 Baja Masiva", "🔄 Cambio de Clase Masiva"])
 
     pestanas = st.tabs(nombres_pestanas)
 
@@ -53,6 +53,7 @@ def mostrar():
     if es_admin:
         tab_alta_masiva = pestanas[3]
         tab_baja_masiva = pestanas[4]
+        tab_cambio_clase_masiva = pestanas[5]
 
     # ==========================================
     # PESTAÑA 1: ALTA INDIVIDUAL
@@ -265,6 +266,7 @@ def mostrar():
                 clases_permitidas = ["Bárbaro", "Guerrero Divino", "Cazador de Demonios", "Monje", "Nigromante", "Arcanista", "Caballero Sangriento", "Tempestario", "Druida", "Brujo", "Desconocida"]
 
             with st.form("form_modificar"):
+                nombre_mod = st.text_input("Nombre del Personaje (Nick):", value=str(jugador_data['nombre'])).strip()
                 clase_actual = jugador_data['clase']
                 idx_clase = clases_permitidas.index(
                     clase_actual) if clase_actual in clases_permitidas else 0
@@ -288,23 +290,38 @@ def mostrar():
                     "¿Está en Discord?", value=bool(jugador_data['usa_discord']))
 
                 if st.form_submit_button("💾 Guardar Cambios"):
-                    if not telefono_mod or reso_mod <= 0 or ic_mod <= 0:
+                    if not nombre_mod:
+                        st.error("⚠️ El Nombre del Personaje es obligatorio.")
+                    elif not telefono_mod or reso_mod <= 0 or ic_mod <= 0:
                         st.error(
-                            "⚠️ Teléfono, Resonancia e IC son campos obligatorios y mayores a cero.")
+                             "⚠️ Teléfono, Resonancia e IC son campos obligatorios y mayores a cero.")
                     else:
                         try:
                             conexion_write = conectar_bd()
                             cursor_write = conexion_write.cursor()
-                            clase_mod_norm = normalizar_clase(clase_mod)
-                            cursor_write.execute('''
-                                UPDATE miembros 
-                                SET clase=?, resonancia=?, ic=?, telefono=?, usa_discord=?, usa_whatsapp=? 
-                                WHERE id=?
-                            ''', (clase_mod_norm, reso_mod, ic_mod, telefono_mod, check_disc_mod, check_wa_mod, int(jugador_data['id'])))
-                            conexion_write.commit()
-                            conexion_write.close()
-                            st.success(
-                                f"✅ ¡Datos de **{jugador_sel}** actualizados sin afectar su antigüedad!")
+                            
+                            # Validar duplicado si cambia de nombre
+                            duplicado = False
+                            if nombre_mod.lower() != jugador_data['nombre'].lower():
+                                cursor_write.execute("SELECT id FROM miembros WHERE LOWER(nombre) = LOWER(?) AND id != ?", (nombre_mod, int(jugador_data['id'])))
+                                if cursor_write.fetchone():
+                                    duplicado = True
+                                     
+                            if duplicado:
+                                st.error("❌ El nombre ingresado ya pertenece a otro miembro del clan.")
+                                conexion_write.close()
+                            else:
+                                clase_mod_norm = normalizar_clase(clase_mod)
+                                cursor_write.execute('''
+                                    UPDATE miembros 
+                                    SET nombre=?, clase=?, resonancia=?, ic=?, telefono=?, usa_discord=?, usa_whatsapp=? 
+                                    WHERE id=?
+                                ''', (nombre_mod, clase_mod_norm, reso_mod, ic_mod, telefono_mod, check_disc_mod, check_wa_mod, int(jugador_data['id'])))
+                                conexion_write.commit()
+                                conexion_write.close()
+                                st.success(
+                                    f"✅ ¡Datos de **{nombre_mod}** actualizados sin afectar su antigüedad!")
+                                st.rerun()
                         except Exception as e:
                             st.error(f"Error al modificar: {e}")
         else:
@@ -512,3 +529,118 @@ def mostrar():
                 if st.button("❌ No, cancelar acción", use_container_width=True):
                     st.info(
                         "Acción abortada por seguridad. No se alteró ningún registro.")
+
+        with tab_cambio_clase_masiva:
+            st.subheader("🔄 Cambio de Clase y Rango Masivo")
+            st.markdown(
+                "Sube el archivo CSV de exportación del juego para actualizar en bloque la **Clase** y el **Rango de Sombra** "
+                "de todos los personajes activos."
+            )
+            
+            archivo_clase_masiva = st.file_uploader(
+                "Subir archivo de exportación (.csv o .xlsx):", 
+                type=['csv', 'xlsx'], 
+                key="uploader_cambio_clase"
+            )
+            
+            if archivo_clase_masiva:
+                try:
+                    # Detectar y leer formato
+                    if archivo_clase_masiva.name.endswith('.csv'):
+                        df_subido = pd.read_csv(archivo_clase_masiva)
+                    else:
+                        df_subido = pd.read_excel(archivo_clase_masiva)
+                        
+                    # Normalizar nombres de columnas a minúsculas y sin espacios
+                    columnas_archivo = {c.strip().lower(): c.strip() for c in df_subido.columns}
+                    
+                    col_nombre = None
+                    for pos in ['nombre', 'nombre de personaje', 'jugador', 'name']:
+                        if pos in columnas_archivo:
+                            col_nombre = columnas_archivo[pos]
+                            break
+                    
+                    col_clase = None
+                    for pos in ['clase', 'class']:
+                        if pos in columnas_archivo:
+                            col_clase = columnas_archivo[pos]
+                            break
+                            
+                    col_rango = None
+                    for pos in ['rango de sombra', 'rango sombra', 'rango', 'shadow rank']:
+                        if pos in columnas_archivo:
+                            col_rango = columnas_archivo[pos]
+                            break
+                            
+                    # Validar estructura mínima
+                    if not col_nombre or not col_clase:
+                        st.error("❌ El archivo debe contener al menos las columnas de 'Nombre' (o Jugador) y 'Clase'.")
+                    else:
+                        # Extraer lista de nombres limpia de espacios accidentales (normalización requerida)
+                        nombres_csv = df_subido[col_nombre].dropna().astype(str).str.strip().unique().tolist()
+                        
+                        # Consultar miembros activos
+                        conexion = conectar_bd()
+                        df_activos = pd.read_sql_query("SELECT nombre FROM miembros WHERE estado='Activo'", conexion)
+                        conexion.close()
+                        
+                        nombres_activos_set = {n.strip().lower() for n in df_activos['nombre']}
+                        
+                        # Buscar jugadores del CSV que no estén registrados en activos (normalizado)
+                        no_registrados = [n for n in nombres_csv if n.strip().lower() not in nombres_activos_set]
+                        
+                        if no_registrados:
+                            st.error(
+                                f"❌ **Error de Validación:** Los siguientes **{len(no_registrados)}** jugadores del archivo "
+                                f"no se encuentran registrados como miembros **activos** en el sistema:\n\n"
+                                f"{', '.join(no_registrados)}"
+                            )
+                            st.info(
+                                "💡 Registra primero a estos miembros individual o masivamente en la pestaña respectiva "
+                                "antes de realizar la actualización de clases."
+                            )
+                            # Botón de guardar deshabilitado
+                            st.button("Confirmar Cambios de Clase", disabled=True, key="btn_cambio_clase_disabled")
+                        else:
+                            st.success("✅ Todos los personajes del archivo coinciden con miembros activos en el sistema.")
+                            
+                            if st.button("Confirmar Cambios de Clase", type="primary", key="btn_cambio_clase_enabled"):
+                                try:
+                                    conexion_write = conectar_bd()
+                                    cursor_write = conexion_write.cursor()
+                                    
+                                    # Consultar nombres de clases en base de datos para alias
+                                    try:
+                                        cursor_write.execute("SELECT nombre FROM clases")
+                                        clases_db = [c[0] for c in cursor_write.fetchall()]
+                                    except:
+                                        clases_db = None
+                                        
+                                    actualizados = 0
+                                    for _, fila in df_subido.iterrows():
+                                        nom = str(fila[col_nombre]).strip()
+                                        cla_sucia = str(fila[col_clase]).strip()
+                                        
+                                        # Rango de Sombra opcional
+                                        rango = "Sin Rango"
+                                        if col_rango and pd.notna(fila[col_rango]):
+                                            rango = str(fila[col_rango]).strip()
+                                            
+                                        # Normalizar y mapear usando los alias definidos en la base de datos
+                                        cla_norm = normalizar_clase(cla_sucia, clases_db=clases_db)
+                                        
+                                        # Actualizar únicamente clase y rango_sombra
+                                        cursor_write.execute(
+                                            "UPDATE miembros SET clase = ?, rango_sombra = ? WHERE LOWER(nombre) = LOWER(?) AND estado = 'Activo'",
+                                            (cla_norm, rango, nom)
+                                        )
+                                        actualizados += cursor_write.rowcount
+                                        
+                                    conexion_write.commit()
+                                    conexion_write.close()
+                                    st.success(f"🎉 ¡Actualización masiva completada! Se actualizaron {actualizados} miembros activos.")
+                                    st.rerun()
+                                except Exception as e:
+                                    st.error(f"❌ Error al procesar la actualización en base de datos: {e}")
+                except Exception as e:
+                    st.error(f"❌ Error al leer el archivo: {e}")
