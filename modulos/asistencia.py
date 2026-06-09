@@ -506,68 +506,134 @@ def mostrar():
 
     # --- PASO 3: AUDITORÍA ---
     with tab_auditoria:
-        st.subheader("Reporte de Cumplimiento")
+        st.subheader("Reporte de Cumplimiento Histórico (Ciclo Activo)")
+        st.markdown(
+            "Visualiza la sábana de asistencia de estilo Excel, análisis de brecha de confirmaciones y KPIs del ciclo.")
 
-        if st.button("🔄 Generar / Actualizar Reporte", use_container_width=True):
-            try:
-                conexion = conectar_bd()
-                query_activos = "SELECT id, nombre, clase FROM miembros WHERE estado='Activo'"
-                query_asistencia = "SELECT miembro_id, intencion, asistio_realmente FROM asistencia WHERE evento_id=? AND fecha=? AND ciclo=?"
+        try:
+            conexion = conectar_bd()
+            # 1. Consulta de Datos (SQL a Pandas)
+            query_audit = """
+                SELECT m.nombre as jugador, m.clase, e.nombre as evento, a.fecha, a.intencion, a.asistio_realmente
+                FROM asistencia a
+                JOIN miembros m ON a.miembro_id = m.id
+                JOIN eventos e ON a.evento_id = e.id
+                WHERE a.ciclo = ?
+            """
+            df_audit = pd.read_sql_query(query_audit, conexion, params=(ciclo,))
+            conexion.close()
+        except Exception as e:
+            st.error(f"Ocurrió un error al consultar los datos de la base de datos: {e}")
+            df_audit = pd.DataFrame()
 
-                df_activos = pd.read_sql_query(query_activos, conexion)
-                df_asistencia = pd.read_sql_query(query_asistencia, conexion, params=(
-                    int(evento_id), str(fecha_evento), ciclo))
-                conexion.close()
+        # 3. Prevención de Errores (DataFrames Vacíos)
+        if df_audit.empty:
+            st.info("No hay datos de asistencia para mostrar en este ciclo.")
+        else:
+            # 2. Panel de KPIs y Estadísticas
+            total_eventos = df_audit['fecha'].nunique()
+            
+            # Promedio de Asistencia General por evento
+            asist_por_evento = df_audit.groupby('fecha')['asistio_realmente'].sum()
+            total_jugadores_por_evento = df_audit.groupby('fecha')['jugador'].count()
+            promedio_asistencia = round((asist_por_evento / total_jugadores_por_evento).mean() * 100, 1) if total_eventos > 0 else 0.0
+            
+            # Tasa de Cumplimiento (% de veces que los que votaron "Sí puedo" realmente asistieron)
+            df_si_puedo = df_audit[df_audit['intencion'] == 'Sí puedo']
+            if not df_si_puedo.empty:
+                tasa_cumplimiento = round((df_si_puedo['asistio_realmente'].sum() / len(df_si_puedo)) * 100, 1)
+            else:
+                tasa_cumplimiento = 0.0
 
-                # Unimos todos los miembros activos con sus registros de asistencia de hoy
-                df_final = pd.merge(
-                    df_activos, df_asistencia, left_on='id', right_on='miembro_id', how='left')
-                df_final['intencion'] = df_final['intencion'].fillna('No votó')
-                df_final['asistio_realmente'] = df_final['asistio_realmente'].fillna(
-                    0).astype(int)
+            col_kpi1, col_kpi2, col_kpi3 = st.columns(3)
+            col_kpi1.metric("📅 Eventos Realizados", total_eventos)
+            col_kpi2.metric("⚔️ Promedio Asistencia Real", f"{promedio_asistencia}%")
+            col_kpi3.metric("🎯 Tasa de Cumplimiento", f"{tasa_cumplimiento}%")
 
-                # Lógica visual para detectar infractores
-                def determinar_estado(row):
-                    voto = row['intencion']
-                    fue = row['asistio_realmente']
+            st.write("")
+            st.divider()
+            
+            # 3. Gráficos de Análisis de Brecha (Voto vs. Realidad)
+            st.subheader("📈 Análisis de Brecha (Voto vs. Realidad)")
+            st.markdown("Comparación temporal del total de confirmaciones (WhatsApp) frente a la asistencia real en juego.")
+            
+            df_brecha = df_audit.groupby('fecha').agg(
+                Confirmaron_Si=('intencion', lambda x: (x == 'Sí puedo').sum()),
+                Asistieron_Realmente=('asistio_realmente', 'sum')
+            ).reset_index()
+            
+            # Ordenar cronológicamente
+            df_brecha = df_brecha.sort_values('fecha')
+            
+            # Crear un dataframe listo para graficar con nombres de columna amigables
+            df_chart = df_brecha.rename(columns={
+                'Confirmaron_Si': 'Votaron "Sí puedo" (WhatsApp)',
+                'Asistieron_Realmente': 'Asistieron Realmente (In-Game)'
+            })
+            
+            # Graficar usando st.line_chart
+            st.line_chart(df_chart.set_index('fecha'))
 
-                    if fue == 1:
-                        if voto == 'No votó':
-                            return "🟢 Asistió (Presente Sorpresa)"
-                        return "🟢 Asistió al Evento"
+            st.write("")
+            st.divider()
+
+            # 4. Tabla Dinámica Estilo Excel (Sábana de Asistencia)
+            st.subheader("📊 Sábana de Asistencia Matricial")
+            st.markdown("Matriz histórica de celdas cruzando intenciones y asistencia real para cada fecha.")
+            
+            # Función lambda para evaluar el cruce de celdas
+            def determinar_indicador(row):
+                voto = row['intencion']
+                fue = row['asistio_realmente']
+                
+                if fue == 1:
+                    if voto in ['No votó', None, '']:
+                        return "👻 Fantasma"
                     else:
-                        if voto == 'Sí puedo':
-                            return "🚨 INFRACCIÓN (Faltó tras confirmar)"
-                        elif voto == 'No puedo':
-                            return "⚪ Ausencia Justificada"
-                        elif voto == 'No aseguro':
-                            return "🟠 Ausente (Avisó duda)"
-                        else:
-                            return "🟡 Ausente Injustificado (No votó)"
+                        return "✅ OK"
+                else:
+                    if voto == 'Sí puedo':
+                        return "🚨 INFRACCIÓN"
+                    elif voto == 'No puedo':
+                        return "⚪ Justificado"
+                    elif voto == 'No aseguro':
+                        return "🟠 Duda"
+                    else:
+                        return "❌ Ausente"
 
-                df_final['Estado Final'] = df_final.apply(
-                    determinar_estado, axis=1)
+            df_audit['indicador'] = df_audit.apply(determinar_indicador, axis=1)
+            
+            # Generar la tabla dinámica pivotada
+            df_pivot = pd.pivot_table(
+                df_audit,
+                index=['jugador', 'clase'],
+                columns='fecha',
+                values='indicador',
+                aggfunc=lambda x: x.iloc[0] if len(x) > 0 else "❌ Ausente"
+            )
+            
+            # Completar registros nulos
+            df_pivot = df_pivot.fillna("❌ Ausente")
+            
+            # Calcular columna acumulativa "Contar Asistencia"
+            df_pivot['Contar Asistencia'] = (df_pivot == '✅ OK').sum(axis=1)
+            
+            # Renombrar índices para presentación visual limpia
+            df_pivot_visual = df_pivot.rename_axis(index={'jugador': 'Jugador', 'clase': 'Clase'})
+            
+            # Mostrar st.dataframe con la columna "Contar Asistencia" resaltada
+            st.dataframe(
+                df_pivot_visual.style.map(lambda x: 'background-color: #d4edda; color: #155724; font-weight: bold;', subset=['Contar Asistencia']),
+                use_container_width=True
+            )
 
-                # Seleccionar columnas para mostrar
-                df_mostrar = df_final[['nombre', 'clase', 'intencion', 'Estado Final']].rename(
-                    columns={'nombre': 'Jugador', 'clase': 'Clase',
-                             'intencion': 'Voto en WhatsApp'}
-                )
-
-                # Métricas Rápidas
-                total = len(df_mostrar)
-                asistieron = len(df_final[df_final['asistio_realmente'] == 1])
-                infractores = len(
-                    df_final[df_final['Estado Final'].str.contains('INFRACCIÓN')])
-
-                c1, c2, c3 = st.columns(3)
-                c1.metric("👥 Activos Convocados", total)
-                c2.metric("⚔️ Asistencia Real",
-                          f"{asistieron} ({round((asistieron/total)*100, 1) if total > 0 else 0}%)")
-                c3.metric("🚨 Infracciones (Confirmó y no fue)", infractores)
-
-                st.dataframe(df_mostrar.sort_values(by='Estado Final'),
-                             use_container_width=True, hide_index=True)
-
-            except Exception as e:
-                st.error(f"Ocurrió un error al generar el reporte: {e}")
+            # 5. Funcionalidad de Exportación compatible con Excel (BOM utf-8-sig)
+            csv_data = df_pivot_visual.to_csv(index=True).encode('utf-8-sig')
+            
+            st.download_button(
+                label="📥 Descargar Sábana de Asistencia (CSV)",
+                data=csv_data,
+                file_name=f"sabana_asistencia_{ciclo.replace(' ', '_').lower()}.csv",
+                mime="text/csv",
+                use_container_width=True
+            )
