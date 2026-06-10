@@ -16,7 +16,48 @@ def mostrar():
         st.subheader("👥 Oficiales con acceso al sistema")
         df_usuarios = pd.read_sql_query(
             "SELECT id, usuario, rol FROM usuarios", conexion)
-        st.dataframe(df_usuarios, use_container_width=True, hide_index=True)
+        
+        seleccion = st.dataframe(
+            df_usuarios,
+            use_container_width=True,
+            hide_index=True,
+            on_select="rerun",
+            selection_mode="single-row",
+            column_config={
+                "id": None,
+                "usuario": "Usuario / Nick",
+                "rol": "Nivel de Permisos"
+            }
+        )
+        
+        # Procesar selección
+        rows = []
+        if hasattr(seleccion, "selection"):
+            rows = getattr(seleccion.selection, "rows", [])
+        elif isinstance(seleccion, dict) and "selection" in seleccion:
+            rows = seleccion["selection"].get("rows", [])
+            
+        if rows:
+            selected_idx = rows[0]
+            usuario_id = int(df_usuarios.iloc[selected_idx]['id'])
+            usuario_name = str(df_usuarios.iloc[selected_idx]['usuario'])
+            
+            usuario_actual = st.session_state.get('usuario', '')
+            if usuario_name.lower() == usuario_actual.lower():
+                st.error("❌ No puedes auto-eliminarte del sistema por motivos de seguridad.")
+            else:
+                st.warning(f"⚠️ ¿Estás seguro de que deseas revocar el acceso del oficial: **{usuario_name}**?")
+                if st.button("🗑️ Eliminar Oficial", type="primary"):
+                    try:
+                        cursor = conexion.cursor()
+                        cursor.execute("DELETE FROM usuarios WHERE id = ?", (usuario_id,))
+                        conexion.commit()
+                        conexion.close()
+                        st.success(f"✅ Acceso revocado para el oficial **{usuario_name}**.")
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"Error al eliminar oficial: {e}")
+                        
         st.divider()
 
         # 2. Crear nuevo usuario o resetear contraseña

@@ -31,7 +31,18 @@ def mostrar():
     with col1:
         st.subheader("📋 Clases Registradas")
         if not df_clases.empty:
-            st.dataframe(df_clases.rename(columns={"id": "ID", "nombre": "Nombre de la Clase"}), use_container_width=True, hide_index=True)
+            df_clases_visual = df_clases.copy()
+            df_clases_visual.insert(0, "#", range(1, len(df_clases_visual) + 1))
+            st.dataframe(
+                df_clases_visual,
+                use_container_width=True,
+                hide_index=True,
+                column_config={
+                    "id": None,
+                    "#": st.column_config.NumberColumn("#", width="small"),
+                    "nombre": "Nombre de la Clase"
+                }
+            )
         else:
             st.info("No hay clases registradas.")
             
