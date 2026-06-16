@@ -4,6 +4,7 @@ import pandas as pd
 import re
 import os
 import sys
+import difflib
 from datetime import date
 from database import conectar_bd, obtener_ciclo_activo
 import pytesseract
@@ -70,20 +71,133 @@ def limpiar_lineas_ocr(lineas):
 
 
 
-def preparar_bd():
-    """Actualiza la tabla asistencia agregando las nuevas columnas si no existen."""
+def calcular_efectividad(kills, asistencias, muertes):
+    muertes_reales = muertes if muertes > 0 else 1
+    return round((kills + asistencias) / muertes_reales, 2)
+
+
+def procesar_ocr_asistencia_real(imagenes_subidas):
     try:
         conexion = conectar_bd()
         cursor = conexion.cursor()
-        cursor.execute(
-            "ALTER TABLE asistencia ADD COLUMN intencion TEXT DEFAULT 'No votó'")
-        cursor.execute(
-            "ALTER TABLE asistencia ADD COLUMN asistio_realmente INTEGER DEFAULT 0")
-        conexion.commit()
+        cursor.execute("SELECT id, nombre FROM miembros WHERE estado='Activo'")
+        miembros_activos = cursor.fetchall()
         conexion.close()
-    except sqlite3.OperationalError:
-        # Si da error es porque las columnas ya fueron creadas anteriormente, continuamos normal.
+    except Exception as e:
+        st.error(f"Error de base de datos al obtener miembros activos: {e}")
+        return []
+
+    if not miembros_activos:
+        return []
+
+    nombres_activos_list = [m[1] for m in miembros_activos]
+    nombres_activos_map = {m[1].lower(): m for m in miembros_activos}
+
+    resultados = {}
+
+    for img_file in imagenes_subidas:
+        try:
+            image = Image.open(img_file)
+            image = ImageOps.grayscale(image)
+            image = ImageOps.autocontrast(image)
+            
+            # Extraer texto con spa+eng
+            texto = pytesseract.image_to_string(image, lang='spa+eng')
+            lineas = [line.strip() for line in texto.split('\n') if line.strip()]
+            
+            for line in lineas:
+                # Buscar todos los bloques numéricos (uno o más dígitos) en la línea
+                matches = list(re.finditer(r'\b\d+\b', line))
+                
+                # Extraemos los últimos 3 números si hay al menos 3
+                if len(matches) >= 3:
+                    k_match = matches[-3]
+                    m_match = matches[-2]
+                    a_match = matches[-1]
+                    
+                    # El nombre tentativo es todo el texto antes del primer número de KDA
+                    name_candidate = line[:k_match.start()].strip()
+                    kills = int(k_match.group())
+                    muertes = int(m_match.group())
+                    asistencias = int(a_match.group())
+                else:
+                    name_candidate = line.strip()
+                    kills, muertes, asistencias = 0, 0, 0
+                
+                # Limpieza del nombre tentativo (remover numeración de lista al inicio, ej. "1.", "2. ")
+                name_candidate = re.sub(r'^[+\d\.\-\s]+', '', name_candidate).strip()
+                
+                # Quitar caracteres especiales típicos del OCR al principio y final
+                name_candidate = re.sub(r'^[^a-zA-Z0-9ñÑáéíóúÁÉÍÓÚ]+|[^a-zA-Z0-9ñÑáéíóúÁÉÍÓÚ]+$', '', name_candidate).strip()
+                
+                if len(name_candidate) < 3:
+                    continue
+                
+                # Búsqueda de coincidencia exacta o fuzzy matching
+                matched_miembro = None
+                nom_lower = name_candidate.lower()
+                if nom_lower in nombres_activos_map:
+                    matched_miembro = nombres_activos_map[nom_lower]
+                else:
+                    close_matches = difflib.get_close_matches(name_candidate, nombres_activos_list, n=1, cutoff=0.6)
+                    if close_matches:
+                        matched_miembro = nombres_activos_map[close_matches[0].lower()]
+                
+                if matched_miembro:
+                    m_id, m_nombre = matched_miembro
+                    # Si ya existe el jugador detectado, preferir aquel con estadísticas válidas (no-cero)
+                    # o simplemente actualizar sus valores
+                    if m_id not in resultados:
+                        resultados[m_id] = {
+                            "Nombre / Jugador": m_nombre,
+                            "Kills ⚔️": kills,
+                            "Muertes 💀": muertes,
+                            "Asistencias 🤜": asistencias
+                        }
+                    else:
+                        if kills > 0 or muertes > 0 or asistencias > 0:
+                            resultados[m_id]["Kills ⚔️"] = kills
+                            resultados[m_id]["Muertes 💀"] = muertes
+                            resultados[m_id]["Asistencias 🤜"] = asistencias
+        except pytesseract.pytesseract.TesseractNotFoundError:
+            st.error("⚠️ El motor Tesseract-OCR no está instalado en este sistema o no se encuentra en el PATH. Si estás en local en Windows, asegúrate de instalar Tesseract en 'C:\\Program Files\\Tesseract-OCR\\tesseract.exe'.")
+            break
+        except Exception as e:
+            st.error(f"Error al procesar la imagen {img_file.name}: {e}")
+
+    # Retornar como lista de diccionarios
+    return list(resultados.values())
+
+
+def preparar_bd():
+    """Actualiza las tablas agregando las nuevas columnas si no existen."""
+    conexion = conectar_bd()
+    cursor = conexion.cursor()
+    
+    # Agregar columnas a la tabla asistencia
+    try:
+        cursor.execute("ALTER TABLE asistencia ADD COLUMN intencion TEXT DEFAULT 'No votó'")
+    except Exception:
         pass
+        
+    try:
+        cursor.execute("ALTER TABLE asistencia ADD COLUMN asistio_realmente INTEGER DEFAULT 0")
+    except Exception:
+        pass
+        
+    # Agregar columnas a la tabla estadisticas_guerra
+    try:
+        cursor.execute("ALTER TABLE estadisticas_guerra ADD COLUMN evento_id INTEGER")
+    except Exception:
+        pass
+        
+    try:
+        cursor.execute("ALTER TABLE estadisticas_guerra ADD COLUMN fecha DATE")
+    except Exception:
+        pass
+        
+    conexion.commit()
+    conexion.close()
 
 
 def mostrar():
@@ -470,39 +584,148 @@ def mostrar():
 
     # --- PASO 2: CARGA REAL ---
     with tab_real:
-        st.subheader("Asistencia Comprobada In-Game")
-        col_izq, col_der = st.columns([2, 1])
-        texto_real = ""
-
-        with col_izq:
-            tab_texto, tab_archivo = st.tabs(
-                ["📋 Pegar Nombres", "📁 Subir Archivo"])
-            with tab_texto:
-                nombres_reales = st.text_area(
-                    "Pega los nombres de los que asistieron al juego:", height=200, key="txt_real")
-                if nombres_reales:
-                    texto_real = nombres_reales
-            with tab_archivo:
-                archivo_subido = st.file_uploader(
-                    "Sube un archivo con los nombres", type=['txt', 'csv'])
-                if archivo_subido is not None:
-                    texto_real = archivo_subido.getvalue().decode("utf-8")
-                    st.success("✅ Archivo leído correctamente.")
-
-        with col_der:
-            st.info("💡 Al guardar, el sistema marcará a estas personas como presentes y cruzará los datos con lo que votaron en la encuesta.")
-            if st.button("🚀 Guardar Asistencia Real", use_container_width=True, type="primary"):
-                if texto_real.strip():
-                    exitos, errores = procesar_y_guardar(
-                        texto_real, 'asistio_realmente', 1)
-                    if exitos > 0:
-                        st.success(
-                            f"✅ Se marcó la asistencia real de {exitos} miembros.")
-                    if errores:
-                        st.error(
-                            "❌ Nombres no encontrados en activos:\n" + ", ".join(set(errores)))
-                else:
-                    st.warning("No has ingresado ningún nombre o archivo.")
+        st.subheader("Asistencia y Estadísticas Reales (OCR)")
+        
+        archivos_subidos = st.file_uploader(
+            "Sube capturas de pantalla de los resultados de las salas:",
+            type=["png", "jpg", "jpeg"],
+            accept_multiple_files=True,
+            key="real_uploader_key"
+        )
+        
+        if 'datos_asistencia_real' not in st.session_state:
+            btn_procesar_real = st.button(
+                "🔍 Procesar Imágenes",
+                type="primary",
+                use_container_width=True,
+                disabled=not archivos_subidos,
+                key="btn_procesar_real_ocr"
+            )
+            
+            if btn_procesar_real and archivos_subidos:
+                with st.spinner("Procesando imágenes y extrayendo estadísticas..."):
+                    resultados_ocr = procesar_ocr_asistencia_real(archivos_subidos)
+                    if resultados_ocr:
+                        st.session_state['datos_asistencia_real'] = resultados_ocr
+                        st.success(f"✅ Se detectaron {len(resultados_ocr)} jugadores activos.")
+                        st.rerun()
+                    else:
+                        st.warning("No se encontraron jugadores activos en las imágenes cargadas.")
+                        
+        if 'datos_asistencia_real' in st.session_state:
+            st.write("### Grilla de Pre-Validación Editable")
+            st.info("💡 Haz doble clic sobre cualquier celda de Kills, Muertes o Asistencias para corregir los números manualmente.")
+            
+            df_real = pd.DataFrame(st.session_state['datos_asistencia_real'])
+            
+            # Asegurar que las columnas existan en el DataFrame para evitar KeyError
+            for col in ["Kills ⚔️", "Muertes 💀", "Asistencias 🤜"]:
+                if col not in df_real.columns:
+                    df_real[col] = 0
+            if "Nombre / Jugador" not in df_real.columns:
+                df_real["Nombre / Jugador"] = ""
+                
+            # Reordenar las columnas para asegurar la presentación deseada
+            df_real = df_real[["Nombre / Jugador", "Kills ⚔️", "Muertes 💀", "Asistencias 🤜"]]
+            
+            df_editado = st.data_editor(
+                df_real,
+                column_config={
+                    "Nombre / Jugador": st.column_config.TextColumn("Nombre / Jugador", disabled=True),
+                    "Kills ⚔️": st.column_config.NumberColumn("Kills ⚔️", min_value=0, step=1),
+                    "Muertes 💀": st.column_config.NumberColumn("Muertes 💀", min_value=0, step=1),
+                    "Asistencias 🤜": st.column_config.NumberColumn("Asistencias 🤜", min_value=0, step=1)
+                },
+                disabled=["Nombre / Jugador"],
+                use_container_width=True,
+                key="editor_asistencia_real_grid"
+            )
+            
+            col_save1, col_save2 = st.columns(2)
+            with col_save1:
+                btn_cancelar = st.button("❌ Cancelar Carga", use_container_width=True, key="btn_cancelar_carga_real")
+            with col_save2:
+                btn_confirmar = st.button("💾 Confirmar y Guardar Asistencia", type="primary", use_container_width=True, key="btn_confirmar_guardar_real")
+                
+            if btn_cancelar:
+                if 'datos_asistencia_real' in st.session_state:
+                    del st.session_state['datos_asistencia_real']
+                st.success("Carga cancelada.")
+                st.rerun()
+                
+            if btn_confirmar:
+                try:
+                    conexion_save = conectar_bd()
+                    cursor_save = conexion_save.cursor()
+                    
+                    # Mapear nombres a miembro_id
+                    cursor_save.execute("SELECT id, nombre FROM miembros WHERE estado='Activo'")
+                    activos_map = {row[1]: row[0] for row in cursor_save.fetchall()}
+                    
+                    guardados = 0
+                    for index, row in df_editado.iterrows():
+                        jugador = row['Nombre / Jugador']
+                        kills = int(row['Kills ⚔️'])
+                        muertes = int(row['Muertes 💀'])
+                        asistencias = int(row['Asistencias 🤜'])
+                        
+                        if jugador in activos_map:
+                            miembro_id = activos_map[jugador]
+                            
+                            # 1. UPSERT asistencia usando evento_id y fecha_evento
+                            cursor_save.execute(
+                                "SELECT id FROM asistencia WHERE miembro_id=? AND evento_id=? AND ciclo=? AND fecha=?",
+                                (miembro_id, int(evento_id), ciclo, str(fecha_evento))
+                            )
+                            registro_asistencia = cursor_save.fetchone()
+                            
+                            if registro_asistencia:
+                                cursor_save.execute(
+                                    "UPDATE asistencia SET asistio_realmente=1 WHERE id=?",
+                                    (registro_asistencia[0],)
+                                )
+                            else:
+                                cursor_save.execute(
+                                    '''INSERT INTO asistencia 
+                                       (miembro_id, evento_id, ciclo, fecha, estado_asistencia, intencion, asistio_realmente) 
+                                       VALUES (?, ?, ?, ?, 'Procesado', 'No votó', 1)''',
+                                    (miembro_id, int(evento_id), ciclo, str(fecha_evento))
+                                )
+                                
+                            # 2. UPSERT estadisticas_guerra usando miembro_id, ciclo, evento_id, fecha
+                            efectividad = calcular_efectividad(kills, asistencias, muertes)
+                            cursor_save.execute(
+                                "SELECT id FROM estadisticas_guerra WHERE miembro_id=? AND ciclo=? AND evento_id=? AND fecha=?",
+                                (miembro_id, ciclo, int(evento_id), str(fecha_evento))
+                            )
+                            registro_stat = cursor_save.fetchone()
+                            
+                            if registro_stat:
+                                cursor_save.execute(
+                                    '''UPDATE estadisticas_guerra 
+                                       SET kills=?, asistencias=?, muertes_sufridas=?, puntaje_porcentaje=? 
+                                       WHERE id=?''',
+                                    (kills, asistencias, muertes, efectividad, registro_stat[0])
+                                )
+                            else:
+                                cursor_save.execute(
+                                    '''INSERT INTO estadisticas_guerra 
+                                       (miembro_id, ciclo, kills, asistencias, muertes_sufridas, puntaje_porcentaje, evento_id, fecha) 
+                                       VALUES (?, ?, ?, ?, ?, ?, ?, ?)''',
+                                    (miembro_id, ciclo, kills, asistencias, muertes, efectividad, int(evento_id), str(fecha_evento))
+                                )
+                            guardados += 1
+                            
+                    conexion_save.commit()
+                    conexion_save.close()
+                    
+                    if 'datos_asistencia_real' in st.session_state:
+                        del st.session_state['datos_asistencia_real']
+                        
+                    st.success("✅ Asistencia y estadísticas guardadas con éxito.")
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"Error al guardar los datos: {e}")
 
     # --- PASO 3: AUDITORÍA ---
     with tab_auditoria:

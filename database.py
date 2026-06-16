@@ -1,7 +1,43 @@
 import sqlite3
-
+import os
+import streamlit as st
 
 def conectar_bd():
+    db_url = None
+    db_token = None
+    
+    # 1. Intentar obtener credenciales de Turso desde st.secrets
+    try:
+        if "TURSO_DATABASE_URL" in st.secrets:
+            db_url = st.secrets["TURSO_DATABASE_URL"]
+        if "TURSO_AUTH_TOKEN" in st.secrets:
+            db_token = st.secrets["TURSO_AUTH_TOKEN"]
+    except Exception:
+        pass
+        
+    # 2. Fallback a variables de entorno si st.secrets no está disponible
+    if not db_url:
+        db_url = os.environ.get("TURSO_DATABASE_URL")
+    if not db_token:
+        db_token = os.environ.get("TURSO_AUTH_TOKEN")
+        
+    # 3. Si tenemos las credenciales, intentamos conectar a Turso usando libsql
+    if db_url and db_token:
+        try:
+            import libsql
+            conn = libsql.connect(database=db_url, auth_token=db_token)
+            try:
+                conn.execute("PRAGMA foreign_keys = ON")
+            except Exception:
+                pass
+            return conn
+        except Exception as e:
+            try:
+                st.warning(f"⚠️ Error al conectar a Turso: {e}. Usando base de datos local como fallback.")
+            except Exception:
+                print(f"Error al conectar a Turso: {e}. Usando base de datos local.")
+                
+    # 4. Fallback local a SQLite
     conn = sqlite3.connect('clan_dunedain.db')
     conn.execute("PRAGMA foreign_keys = ON")
     return conn
@@ -36,7 +72,7 @@ def preparar_db():
     for col_name, col_type in columnas_nuevas:
         try:
             cursor.execute(f"ALTER TABLE miembros ADD COLUMN {col_name} {col_type}")
-        except sqlite3.OperationalError:
+        except Exception:
             pass
             
     # Crear e inicializar la tabla de clases

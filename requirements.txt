@@ -4,3 +4,4 @@ werkzeug
 openpyxl
 pytesseract
 Pillow
+libsql
