@@ -4,170 +4,8 @@ import pandas as pd
 import re
 import os
 import sys
-import difflib
 from datetime import date
 from database import conectar_bd, obtener_ciclo_activo
-import pytesseract
-from PIL import Image, ImageOps
-
-# Configurar ruta de tesseract en Windows si aplica
-if os.name == 'nt':
-    pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'
-
-def extraer_nombres_ocr(imagen_upload):
-    try:
-        image = Image.open(imagen_upload)
-        # Preprocesamiento obligatorio: escala de grises y mejora de contraste
-        image = ImageOps.grayscale(image)
-        image = ImageOps.autocontrast(image)
-        
-        # Intentar extraer texto con español (spa) e inglés (eng) por compatibilidad
-        texto = pytesseract.image_to_string(image, lang='spa+eng')
-        return [line.strip() for line in texto.split('\n') if line.strip()]
-    except pytesseract.pytesseract.TesseractNotFoundError:
-        st.error("⚠️ El motor Tesseract-OCR no está instalado en este sistema o no se encuentra en el PATH. Si estás en local en Windows, asegúrate de instalar Tesseract en 'C:\\Program Files\\Tesseract-OCR\\tesseract.exe'.")
-        return []
-    except Exception as e:
-        st.error(f"Error al procesar la imagen: {e}")
-        return []
-
-def limpiar_lineas_ocr(lineas):
-    lineas_limpias = []
-    for linea in lineas:
-        l = linea.strip()
-        # Omitir si es muy corta (basura)
-        if len(l) < 3:
-            continue
-        
-        # Eliminar marcas de tiempo (ej: "12:30", "12:30 p.m.", "12:30 pm", "15:45", etc.)
-        l = re.sub(r'\b\d{1,2}:\d{2}(?:\s?[ap]\.?\s?m\.?)?\b', '', l, flags=re.IGNORECASE)
-        
-        # Eliminar números de orden, guiones y caracteres extraños al inicio (ej. "1. ", "+ ", "- ", etc.)
-        l_clean = re.sub(r'^[+\d\.\-\s]+', '', l)
-        
-        # Quitar emoticonos
-        l_clean = re.sub(r'[\u2600-\u27BF\U0001f300-\U0001f64f\U0001f680-\U0001f6ff]', '', l_clean)
-        l_clean = l_clean.strip()
-        
-        # Omitir palabras basura comunes de la interfaz de WhatsApp
-        l_lower = l_clean.lower()
-        palabras_basura = [
-            "voto", "votos", "encuesta", "creador", "creó", "opciones", 
-            "responder", "reenviar", "copiar", "eliminar", "info", "detalles",
-            "ayer", "hoy", "pm", "am", "p.m.", "a.m."
-        ]
-        es_basura = False
-        for wb in palabras_basura:
-            if wb in l_lower:
-                es_basura = True
-                break
-        if es_basura:
-            continue
-        
-        if len(l_clean) >= 3:
-            lineas_limpias.append(l_clean)
-            
-    return list(set(lineas_limpias))
-
-
-
-def calcular_efectividad(kills, asistencias, muertes):
-    muertes_reales = muertes if muertes > 0 else 1
-    return round((kills + asistencias) / muertes_reales, 2)
-
-
-def procesar_ocr_asistencia_real(imagenes_subidas):
-    try:
-        conexion = conectar_bd()
-        cursor = conexion.cursor()
-        cursor.execute("SELECT id, nombre FROM miembros WHERE estado='Activo'")
-        miembros_activos = cursor.fetchall()
-        conexion.close()
-    except Exception as e:
-        st.error(f"Error de base de datos al obtener miembros activos: {e}")
-        return []
-
-    if not miembros_activos:
-        return []
-
-    nombres_activos_list = [m[1] for m in miembros_activos]
-    nombres_activos_map = {m[1].lower(): m for m in miembros_activos}
-
-    resultados = {}
-
-    for img_file in imagenes_subidas:
-        try:
-            image = Image.open(img_file)
-            image = ImageOps.grayscale(image)
-            image = ImageOps.autocontrast(image)
-            
-            # Extraer texto con spa+eng
-            texto = pytesseract.image_to_string(image, lang='spa+eng')
-            lineas = [line.strip() for line in texto.split('\n') if line.strip()]
-            
-            for line in lineas:
-                # Buscar todos los bloques numéricos (uno o más dígitos) en la línea
-                matches = list(re.finditer(r'\b\d+\b', line))
-                
-                # Extraemos los últimos 3 números si hay al menos 3
-                if len(matches) >= 3:
-                    k_match = matches[-3]
-                    m_match = matches[-2]
-                    a_match = matches[-1]
-                    
-                    # El nombre tentativo es todo el texto antes del primer número de KDA
-                    name_candidate = line[:k_match.start()].strip()
-                    kills = int(k_match.group())
-                    muertes = int(m_match.group())
-                    asistencias = int(a_match.group())
-                else:
-                    name_candidate = line.strip()
-                    kills, muertes, asistencias = 0, 0, 0
-                
-                # Limpieza del nombre tentativo (remover numeración de lista al inicio, ej. "1.", "2. ")
-                name_candidate = re.sub(r'^[+\d\.\-\s]+', '', name_candidate).strip()
-                
-                # Quitar caracteres especiales típicos del OCR al principio y final
-                name_candidate = re.sub(r'^[^a-zA-Z0-9ñÑáéíóúÁÉÍÓÚ]+|[^a-zA-Z0-9ñÑáéíóúÁÉÍÓÚ]+$', '', name_candidate).strip()
-                
-                if len(name_candidate) < 3:
-                    continue
-                
-                # Búsqueda de coincidencia exacta o fuzzy matching
-                matched_miembro = None
-                nom_lower = name_candidate.lower()
-                if nom_lower in nombres_activos_map:
-                    matched_miembro = nombres_activos_map[nom_lower]
-                else:
-                    close_matches = difflib.get_close_matches(name_candidate, nombres_activos_list, n=1, cutoff=0.6)
-                    if close_matches:
-                        matched_miembro = nombres_activos_map[close_matches[0].lower()]
-                
-                if matched_miembro:
-                    m_id, m_nombre = matched_miembro
-                    # Si ya existe el jugador detectado, preferir aquel con estadísticas válidas (no-cero)
-                    # o simplemente actualizar sus valores
-                    if m_id not in resultados:
-                        resultados[m_id] = {
-                            "Nombre / Jugador": m_nombre,
-                            "Kills ⚔️": kills,
-                            "Muertes 💀": muertes,
-                            "Asistencias 🤜": asistencias
-                        }
-                    else:
-                        if kills > 0 or muertes > 0 or asistencias > 0:
-                            resultados[m_id]["Kills ⚔️"] = kills
-                            resultados[m_id]["Muertes 💀"] = muertes
-                            resultados[m_id]["Asistencias 🤜"] = asistencias
-        except pytesseract.pytesseract.TesseractNotFoundError:
-            st.error("⚠️ El motor Tesseract-OCR no está instalado en este sistema o no se encuentra en el PATH. Si estás en local en Windows, asegúrate de instalar Tesseract en 'C:\\Program Files\\Tesseract-OCR\\tesseract.exe'.")
-            break
-        except Exception as e:
-            st.error(f"Error al procesar la imagen {img_file.name}: {e}")
-
-    # Retornar como lista de diccionarios
-    return list(resultados.values())
-
 
 def preparar_bd():
     """Actualiza las tablas agregando las nuevas columnas si no existen."""
@@ -182,6 +20,11 @@ def preparar_bd():
         
     try:
         cursor.execute("ALTER TABLE asistencia ADD COLUMN asistio_realmente INTEGER DEFAULT 0")
+    except Exception:
+        pass
+        
+    try:
+        cursor.execute("ALTER TABLE asistencia ADD COLUMN sala_asignada TEXT DEFAULT 'No asignado'")
     except Exception:
         pass
         
@@ -248,486 +91,182 @@ def mostrar():
     # ==========================================
     # PESTAÑAS DEL FLUJO DE TRABAJO
     # ==========================================
-    tab_encuesta, tab_real, tab_auditoria = st.tabs([
-        "📱 1. Cargar Votos (WhatsApp)",
-        "✅ 2. Cargar Asistencia Real",
-        "📊 3. Auditoría de Asistencia"
+    tab_carga, tab_auditoria = st.tabs([
+        "📋 Carga de Asistencia y Salas",
+        "📊 Auditoría de Asistencia"
     ])
 
-    # Función auxiliar para procesar listas de nombres y guardarlas en la BD
-    def procesar_y_guardar(lista_cruda, campo_bd, valor_guardar):
-        nombres = [nom.strip() for nom in re.split(
-            r'[,\n\t]+', lista_cruda) if nom.strip()]
-        if not nombres:
-            return 0, []
+    # Mapeo de intenciones para compatibilidad con el módulo de auditoría
+    db_to_ui_intencion = {
+        'Sí puedo': 'SÍ PUEDO',
+        'No puedo': 'NO PUEDO',
+        'No aseguro': 'NO ASEGURO',
+        'No votó': 'NO VOTO'
+    }
 
-        conexion = conectar_bd()
-        cursor = conexion.cursor()
-        cursor.execute("SELECT id, nombre FROM miembros WHERE estado='Activo'")
-        miembros_activos = {fila[1].lower(): fila[0]
-                            for fila in cursor.fetchall()}
+    ui_to_db_intencion = {
+        'SÍ PUEDO': 'Sí puedo',
+        'NO PUEDO': 'No puedo',
+        'NO ASEGURO': 'No aseguro',
+        'NO VOTO': 'No votó'
+    }
 
-        encontrados = 0
-        no_registrados = []
+    # --- TAB 1: CARGA DE ASISTENCIA Y SALAS ---
+    with tab_carga:
+        st.subheader("Planilla de Control de Asistencia y Distribución de Salas")
+        st.info("💡 Haz doble clic sobre 'Intención de Voto', 'Sala de Guerra' o 'Asistencia Real' para editar los campos.")
 
-        for nom in nombres:
-            nom_l = nom.lower()
-            if nom_l in miembros_activos:
-                m_id = miembros_activos[nom_l]
+        # Obtener los datos actuales de los miembros activos y cruzar con su asistencia
+        try:
+            conexion = conectar_bd()
+            query_miembros = """
+                SELECT 
+                    m.id AS miembro_id,
+                    m.nombre AS Nombre,
+                    m.clase AS Clase,
+                    m.resonancia AS Resonancia,
+                    a.intencion,
+                    a.sala_asignada,
+                    a.asistio_realmente
+                FROM miembros m
+                LEFT JOIN asistencia a ON m.id = a.miembro_id AND a.evento_id = ? AND a.fecha = ?
+                WHERE m.estado = 'Activo'
+                ORDER BY m.nombre
+            """
+            df_miembros = pd.read_sql_query(query_miembros, conexion, params=(int(evento_id), str(fecha_evento)))
+            conexion.close()
+        except Exception as e:
+            st.error(f"Error al obtener los miembros: {e}")
+            df_miembros = pd.DataFrame()
 
-                # Buscamos si ya tiene registro para este evento
-                cursor.execute("SELECT id FROM asistencia WHERE miembro_id=? AND evento_id=? AND ciclo=? AND fecha=?",
-                               (m_id, int(evento_id), ciclo, str(fecha_evento)))
-                registro = cursor.fetchone()
+        if not df_miembros.empty:
+            # Mapear valores de base de datos a UI
+            df_miembros["Intención de Voto"] = df_miembros["intencion"].map(db_to_ui_intencion).fillna("NO VOTO")
+            df_miembros["Sala de Guerra"] = df_miembros["sala_asignada"].fillna("No asignado")
+            df_miembros["Asistencia Real"] = df_miembros["asistio_realmente"].apply(lambda x: True if x == 1 else False)
 
-                if registro:
-                    cursor.execute(
-                        f"UPDATE asistencia SET {campo_bd}=? WHERE id=?", (valor_guardar, registro[0]))
-                else:
-                    # Si no existe, creamos el registro inicializando las variables
-                    intencion_val = valor_guardar if campo_bd == 'intencion' else 'No votó'
-                    asistio_val = valor_guardar if campo_bd == 'asistio_realmente' else 0
+            # Dropear columnas temporales de BD
+            df_miembros = df_miembros.drop(columns=["intencion", "sala_asignada", "asistio_realmente"])
 
-                    cursor.execute('''INSERT INTO asistencia 
-                                      (miembro_id, evento_id, ciclo, fecha, estado_asistencia, intencion, asistio_realmente) 
-                                      VALUES (?, ?, ?, ?, 'Procesado', ?, ?)''',
-                                   (m_id, int(evento_id), ciclo, str(fecha_evento), intencion_val, asistio_val))
-                encontrados += 1
-            else:
-                no_registrados.append(nom)
+            # Asegurar el orden de las columnas para st.data_editor
+            df_miembros = df_miembros[["miembro_id", "Nombre", "Clase", "Resonancia", "Intención de Voto", "Sala de Guerra", "Asistencia Real"]]
+            
+            # Ajustar la numeración de los registros iniciando desde 1 y agregar la columna "Num Activo"
+            df_miembros.insert(0, "Num Activo", range(1, len(df_miembros) + 1))
 
-        conexion.commit()
-        conexion.close()
-        return encontrados, no_registrados
-
-    # --- PASO 1: CARGA DE ENCUESTA ---
-    with tab_encuesta:
-        st.subheader("Resultados de la Encuesta Previa (WhatsApp)")
-        st.markdown(
-            "Sube capturas de pantalla de los votos de WhatsApp para procesarlos con OCR. Puedes subir múltiples capturas por opción.")
-
-        col_si, col_no, col_duda = st.columns(3)
-        with col_si:
-            files_si = st.file_uploader("🟢 Votaron: SÍ PUEDO", type=["png", "jpg", "jpeg"], accept_multiple_files=True, key="files_si")
-        with col_no:
-            files_no = st.file_uploader("🔴 Votaron: NO PUEDO", type=["png", "jpg", "jpeg"], accept_multiple_files=True, key="files_no")
-        with col_duda:
-            files_duda = st.file_uploader("🟡 Votaron: NO ASEGURO", type=["png", "jpg", "jpeg"], accept_multiple_files=True, key="files_duda")
-
-        col_btn1, col_btn2 = st.columns([1, 1])
-        with col_btn1:
-            btn_procesar = st.button("🔍 Procesar Imágenes", type="primary", use_container_width=True)
-        with col_btn2:
-            btn_limpiar = st.button("🗑️ Limpiar Carga", use_container_width=True)
-
-        if btn_limpiar:
-            for k in ['votos_reconocidos', 'votos_desconocidos', 'votos_no_votaron', 'votos_si_ocr', 'votos_no_ocr', 'votos_duda_ocr']:
-                if k in st.session_state:
-                    del st.session_state[k]
-            st.success("Carga limpiada correctamente.")
-            st.rerun()
-
-        if btn_procesar:
-            # Procesar "SÍ PUEDO"
-            nombres_si = []
-            if files_si:
-                for f in files_si:
-                    nombres_si.extend(extraer_nombres_ocr(f))
-            
-            # Procesar "NO PUEDO"
-            nombres_no = []
-            if files_no:
-                for f in files_no:
-                    nombres_no.extend(extraer_nombres_ocr(f))
-                    
-            # Procesar "NO ASEGURO"
-            nombres_duda = []
-            if files_duda:
-                for f in files_duda:
-                    nombres_duda.extend(extraer_nombres_ocr(f))
-                    
-            # Limpiar y guardar en session state
-            st.session_state['votos_si_ocr'] = limpiar_lineas_ocr(nombres_si)
-            st.session_state['votos_no_ocr'] = limpiar_lineas_ocr(nombres_no)
-            st.session_state['votos_duda_ocr'] = limpiar_lineas_ocr(nombres_duda)
-            
-            # Ejecutar análisis
-            try:
-                conexion = conectar_bd()
-                cursor = conexion.cursor()
-                cursor.execute("SELECT id, nombre FROM miembros WHERE estado='Activo'")
-                miembros_activos = cursor.fetchall()
-                
-                cursor.execute("SELECT whatsapp_name, miembro_id FROM alias_whatsapp")
-                aliases = cursor.fetchall()
-                conexion.close()
-            except Exception as e:
-                st.error(f"Error de base de datos: {e}")
-                miembros_activos = []
-                aliases = []
-                
-            miembros_map = {m[1].lower(): (m[0], m[1]) for m in miembros_activos}
-            alias_map = {a[0].lower(): a[1] for a in aliases}
-            miembro_id_map = {m[0]: m[1] for m in miembros_activos}
-            
-            reconocidos = []
-            desconocidos = []
-            reconocidos_ids = set()
-            
-            votos_por_intencion = [
-                ('Sí puedo', st.session_state.get('votos_si_ocr', [])),
-                ('No puedo', st.session_state.get('votos_no_ocr', [])),
-                ('No aseguro', st.session_state.get('votos_duda_ocr', []))
-            ]
-            
-            for intencion, nombres in votos_por_intencion:
-                for nom_wa in nombres:
-                    nom_wa_l = nom_wa.lower()
-                    if nom_wa_l in miembros_map:
-                        m_id, m_nombre = miembros_map[nom_wa_l]
-                        reconocidos.append({
-                            "nombre_whatsapp": nom_wa,
-                            "nombre_miembro": m_nombre,
-                            "miembro_id": m_id,
-                            "intencion": intencion
-                        })
-                        reconocidos_ids.add(m_id)
-                    elif nom_wa_l in alias_map:
-                        m_id = alias_map[nom_wa_l]
-                        if m_id in miembro_id_map:
-                            reconocidos.append({
-                                "nombre_whatsapp": nom_wa,
-                                "nombre_miembro": miembro_id_map[m_id],
-                                "miembro_id": m_id,
-                                "intencion": intencion
-                            })
-                            reconocidos_ids.add(m_id)
-                        else:
-                            desconocidos.append({
-                                "nombre_whatsapp": nom_wa,
-                                "intencion": intencion
-                            })
-                    else:
-                        desconocidos.append({
-                            "nombre_whatsapp": nom_wa,
-                            "intencion": intencion
-                        })
-                        
-            no_votaron = []
-            for m_id, m_nombre in miembros_activos:
-                if m_id not in reconocidos_ids:
-                    no_votaron.append({
-                        "miembro_id": m_id,
-                        "nombre": m_nombre
-                    })
-                    
-            st.session_state['votos_reconocidos'] = reconocidos
-            st.session_state['votos_desconocidos'] = desconocidos
-            st.session_state['votos_no_votaron'] = no_votaron
-            
-            st.success("🎉 Capturas procesadas correctamente. Valida los resultados abajo.")
-            st.rerun()
-
-        # UI de resolución de conflictos y guardado final
-        if 'votos_reconocidos' in st.session_state:
-            reconocidos = st.session_state.get('votos_reconocidos', [])
-            desconocidos = st.session_state.get('votos_desconocidos', [])
-            no_votaron = st.session_state.get('votos_no_votaron', [])
-            
-            st.write("---")
-            st.subheader("⚠️ Validación y Resolución de Conflictos")
-            
-            if desconocidos:
-                st.warning(f"Se encontraron **{len(desconocidos)}** nombres de WhatsApp no reconocidos. Debes asociarlos con un miembro activo o elegir 'Ignorar' antes de guardar:")
-                
-                try:
-                    conn = conectar_bd()
-                    cursor = conn.cursor()
-                    cursor.execute("SELECT id, nombre FROM miembros WHERE estado='Activo' ORDER BY nombre")
-                    activos_db = cursor.fetchall()
-                    conn.close()
-                except:
-                    activos_db = []
-                    
-                opciones_activos = ["Ignorar / No es del clan"] + [a[1] for a in activos_db]
-                activos_map = {a[1]: a[0] for a in activos_db}
-                
-                with st.form("form_alias_resolucion"):
-                    resoluciones = {}
-                    for i, unk in enumerate(desconocidos):
-                        st.markdown(f"Captura: **{unk['nombre_whatsapp']}** (Voto: `{unk['intencion']}`)")
-                        resoluciones[i] = st.selectbox(
-                            "Asociar con miembro del clan:",
-                            opciones_activos,
-                            key=f"alias_sel_{i}"
-                        )
-                        st.write("")
-                        
-                    btn_guardar_alias = st.form_submit_button("💾 Guardar Alias y Validar")
-                    
-                    if btn_guardar_alias:
-                        nuevos_reconocidos = list(reconocidos)
-                        nuevos_desconocidos = []
-                        
-                        try:
-                            conn_alias = conectar_bd()
-                            cursor_alias = conn_alias.cursor()
-                            
-                            for i, unk in enumerate(desconocidos):
-                                seleccion = resoluciones[i]
-                                if seleccion != "Ignorar / No es del clan":
-                                    miembro_id = activos_map[seleccion]
-                                    cursor_alias.execute(
-                                        "INSERT OR IGNORE INTO alias_whatsapp (whatsapp_name, miembro_id) VALUES (?, ?)",
-                                        (unk['nombre_whatsapp'], miembro_id)
-                                    )
-                                    nuevos_reconocidos.append({
-                                        "nombre_whatsapp": unk['nombre_whatsapp'],
-                                        "nombre_miembro": seleccion,
-                                        "miembro_id": miembro_id,
-                                        "intencion": unk['intencion']
-                                    })
-                                else:
-                                    # Si es ignorar, no se agrega a reconocidos ni a desconocidos (se descarta)
-                                    pass
-                                    
-                            conn_alias.commit()
-                            conn_alias.close()
-                            
-                            st.session_state['votos_reconocidos'] = nuevos_reconocidos
-                            st.session_state['votos_desconocidos'] = [] # Limpiado
-                            
-                            reconocidos_ids = {r['miembro_id'] for r in nuevos_reconocidos}
-                            nuevos_no_votaron = [nv for nv in no_votaron if nv['miembro_id'] not in reconocidos_ids]
-                            st.session_state['votos_no_votaron'] = nuevos_no_votaron
-                            
-                            st.success("✅ Alias guardados correctamente y lista actualizada.")
-                            st.rerun()
-                        except Exception as e:
-                            st.error(f"Error al guardar los alias: {e}")
-            else:
-                st.success("✨ ¡Todos los nombres reconocidos y validados!")
-                
-            st.divider()
-            st.subheader("💾 Guardado Final")
-            st.write(f"📊 **Resumen actual:**")
-            st.write(f"- Miembros reconocidos y validados: **{len(reconocidos)}**")
-            st.write(f"- Miembros que no votaron: **{len(no_votaron)}**")
-            
-            aplicar_no_voto = st.checkbox("¿Deseas aplicar la inasistencia (No votó) a los que faltan?", value=True)
-            
-            guardado_deshabilitado = len(desconocidos) > 0
-            if guardado_deshabilitado:
-                st.warning("⚠️ Hay nombres desconocidos sin resolver. El guardado final está bloqueado.")
-                
-            btn_guardar_final = st.button(
-                "Confirmar y Guardar Asistencia",
-                disabled=guardado_deshabilitado,
-                type="primary",
-                use_container_width=True
-            )
-            
-            if btn_guardar_final:
-                try:
-                    conn_save = conectar_bd()
-                    cursor_save = conn_save.cursor()
-                    
-                    # Guardar reconocidos
-                    for rec in reconocidos:
-                        m_id = rec['miembro_id']
-                        intencion_val = rec['intencion']
-                        
-                        cursor_save.execute("SELECT id FROM asistencia WHERE miembro_id=? AND evento_id=? AND ciclo=? AND fecha=?",
-                                            (m_id, int(evento_id), ciclo, str(fecha_evento)))
-                        registro = cursor_save.fetchone()
-                        
-                        if registro:
-                            cursor_save.execute(
-                                "UPDATE asistencia SET intencion=? WHERE id=?",
-                                (intencion_val, registro[0])
-                            )
-                        else:
-                            cursor_save.execute('''INSERT INTO asistencia 
-                                              (miembro_id, evento_id, ciclo, fecha, estado_asistencia, intencion, asistio_realmente) 
-                                              VALUES (?, ?, ?, ?, 'Procesado', ?, 0)''',
-                                           (m_id, int(evento_id), ciclo, str(fecha_evento), intencion_val))
-                            
-                    # Guardar no votaron si se seleccionó
-                    if aplicar_no_voto:
-                        for nv in no_votaron:
-                            m_id = nv['miembro_id']
-                            cursor_save.execute("SELECT id FROM asistencia WHERE miembro_id=? AND evento_id=? AND ciclo=? AND fecha=?",
-                                                (m_id, int(evento_id), ciclo, str(fecha_evento)))
-                            registro = cursor_save.fetchone()
-                            
-                            if registro:
-                                cursor_save.execute(
-                                    "UPDATE asistencia SET intencion='No votó' WHERE id=?",
-                                    (registro[0],)
-                                )
-                            else:
-                                cursor_save.execute('''INSERT INTO asistencia 
-                                                  (miembro_id, evento_id, ciclo, fecha, estado_asistencia, intencion, asistio_realmente) 
-                                                  VALUES (?, ?, ?, ?, 'Procesado', 'No votó', 0)''',
-                                               (m_id, int(evento_id), ciclo, str(fecha_evento)))
-                                
-                    conn_save.commit()
-                    conn_save.close()
-                    st.success("🎉 ¡Asistencia del evento guardada correctamente en la base de datos!")
-                    
-                    for k in ['votos_reconocidos', 'votos_desconocidos', 'votos_no_votaron', 'votos_si_ocr', 'votos_no_ocr', 'votos_duda_ocr']:
-                        if k in st.session_state:
-                            del st.session_state[k]
-                    st.rerun()
-                except Exception as e:
-                    st.error(f"Error al guardar asistencia final: {e}")
-
-    # --- PASO 2: CARGA REAL ---
-    with tab_real:
-        st.subheader("Asistencia y Estadísticas Reales (OCR)")
-        
-        archivos_subidos = st.file_uploader(
-            "Sube capturas de pantalla de los resultados de las salas:",
-            type=["png", "jpg", "jpeg"],
-            accept_multiple_files=True,
-            key="real_uploader_key"
-        )
-        
-        if 'datos_asistencia_real' not in st.session_state:
-            btn_procesar_real = st.button(
-                "🔍 Procesar Imágenes",
-                type="primary",
-                use_container_width=True,
-                disabled=not archivos_subidos,
-                key="btn_procesar_real_ocr"
-            )
-            
-            if btn_procesar_real and archivos_subidos:
-                with st.spinner("Procesando imágenes y extrayendo estadísticas..."):
-                    resultados_ocr = procesar_ocr_asistencia_real(archivos_subidos)
-                    if resultados_ocr:
-                        st.session_state['datos_asistencia_real'] = resultados_ocr
-                        st.success(f"✅ Se detectaron {len(resultados_ocr)} jugadores activos.")
-                        st.rerun()
-                    else:
-                        st.warning("No se encontraron jugadores activos en las imágenes cargadas.")
-                        
-        if 'datos_asistencia_real' in st.session_state:
-            st.write("### Grilla de Pre-Validación Editable")
-            st.info("💡 Haz doble clic sobre cualquier celda de Kills, Muertes o Asistencias para corregir los números manualmente.")
-            
-            df_real = pd.DataFrame(st.session_state['datos_asistencia_real'])
-            
-            # Asegurar que las columnas existan en el DataFrame para evitar KeyError
-            for col in ["Kills ⚔️", "Muertes 💀", "Asistencias 🤜"]:
-                if col not in df_real.columns:
-                    df_real[col] = 0
-            if "Nombre / Jugador" not in df_real.columns:
-                df_real["Nombre / Jugador"] = ""
-                
-            # Reordenar las columnas para asegurar la presentación deseada
-            df_real = df_real[["Nombre / Jugador", "Kills ⚔️", "Muertes 💀", "Asistencias 🤜"]]
-            
+            # Mostrar st.data_editor configurado
             df_editado = st.data_editor(
-                df_real,
+                df_miembros,
                 column_config={
-                    "Nombre / Jugador": st.column_config.TextColumn("Nombre / Jugador", disabled=True),
-                    "Kills ⚔️": st.column_config.NumberColumn("Kills ⚔️", min_value=0, step=1),
-                    "Muertes 💀": st.column_config.NumberColumn("Muertes 💀", min_value=0, step=1),
-                    "Asistencias 🤜": st.column_config.NumberColumn("Asistencias 🤜", min_value=0, step=1)
+                    "miembro_id": None,  # Oculta la columna del ID de miembro
+                    "Num Activo": st.column_config.NumberColumn("Num Activo", disabled=True, format="%d"),
+                    "Nombre": st.column_config.TextColumn("Nombre / Jugador", disabled=True),
+                    "Clase": st.column_config.TextColumn("Clase", disabled=True),
+                    "Resonancia": st.column_config.NumberColumn("Resonancia", disabled=True),
+                    "Intención de Voto": st.column_config.SelectboxColumn(
+                        "Intención de Voto",
+                        options=["NO VOTO", "SÍ PUEDO", "NO PUEDO", "NO ASEGURO"],
+                        required=True
+                    ),
+                    "Sala de Guerra": st.column_config.SelectboxColumn(
+                        "Sala de Guerra",
+                        options=[
+                            "No asignado", "Sala 1 (8 Pts)", "Sala 2 (8 Pts)", "Sala 3 (8 Pts)",
+                            "Sala 1 (4 Pts)", "Sala 2 (4 Pts)", "Sala 3 (4 Pts)",
+                            "Sala 1 (2 Pts)", "Sala 2 (2 Pts)", "Sala 3 (2 Pts)",
+                            "Sala 1 (1 Pt)", "Sala 2 (1 Pt)", "Sala 3 (1 Pt)"
+                        ],
+                        required=True
+                    ),
+                    "Asistencia Real": st.column_config.CheckboxColumn("Asistencia Real", default=False)
                 },
-                disabled=["Nombre / Jugador"],
+                disabled=["Num Activo", "Nombre", "Clase", "Resonancia"],
                 use_container_width=True,
-                key="editor_asistencia_real_grid"
+                hide_index=True,
+                key="editor_asistencia_salas_grid"
             )
-            
-            col_save1, col_save2 = st.columns(2)
-            with col_save1:
-                btn_cancelar = st.button("❌ Cancelar Carga", use_container_width=True, key="btn_cancelar_carga_real")
-            with col_save2:
-                btn_confirmar = st.button("💾 Confirmar y Guardar Asistencia", type="primary", use_container_width=True, key="btn_confirmar_guardar_real")
-                
-            if btn_cancelar:
-                if 'datos_asistencia_real' in st.session_state:
-                    del st.session_state['datos_asistencia_real']
-                st.success("Carga cancelada.")
-                st.rerun()
-                
-            if btn_confirmar:
-                try:
-                    conexion_save = conectar_bd()
-                    cursor_save = conexion_save.cursor()
-                    
-                    # Mapear nombres a miembro_id
-                    cursor_save.execute("SELECT id, nombre FROM miembros WHERE estado='Activo'")
-                    activos_map = {row[1]: row[0] for row in cursor_save.fetchall()}
-                    
-                    guardados = 0
-                    for index, row in df_editado.iterrows():
-                        jugador = row['Nombre / Jugador']
-                        kills = int(row['Kills ⚔️'])
-                        muertes = int(row['Muertes 💀'])
-                        asistencias = int(row['Asistencias 🤜'])
+
+            # Botón de guardar
+            if st.button("💾 Actualizar y Guardar Asistencia y Salas", type="primary", use_container_width=True):
+                # 1. Validación de Salas: máximo 8 jugadores por sala (excluyendo "No asignado")
+                room_counts = df_editado[df_editado["Sala de Guerra"] != "No asignado"]["Sala de Guerra"].value_counts()
+                exceeded_rooms = []
+                for room, count in room_counts.items():
+                    if count > 8:
+                        exceeded_rooms.append(f"**{room}** (tiene {count} jugadores asignados, máximo 8)")
+
+                if exceeded_rooms:
+                    st.error("🚫 **El guardado se ha bloqueado porque las siguientes salas superan el límite de 8 jugadores:**\n\n" + "\n".join([f"- {r}" for r in exceeded_rooms]))
+                else:
+                    try:
+                        conexion_save = conectar_bd()
+                        cursor_save = conexion_save.cursor()
                         
-                        if jugador in activos_map:
-                            miembro_id = activos_map[jugador]
+                        warnings_list = []
+                        
+                        # 2. Iterar y persistir cambios con UPSERT en asistencia
+                        for index, row in df_editado.iterrows():
+                            miembro_id = int(row['miembro_id'])
+                            jugador = row['Nombre']
+                            intencion_ui = row['Intención de Voto']
+                            sala_ui = row['Sala de Guerra']
+                            asistencia_ui = row['Asistencia Real']
                             
-                            # 1. UPSERT asistencia usando evento_id y fecha_evento
+                            # Mapear de regreso a formato de base de datos
+                            intencion_db = ui_to_db_intencion.get(intencion_ui, 'No votó')
+                            sala_db = sala_ui
+                            asistio_realmente_db = 1 if asistencia_ui else 0
+                            
+                            # Si no asistió, verificar cuántas inasistencias acumuladas posee en el ciclo activo
+                            if not asistencia_ui:
+                                cursor_save.execute(
+                                    "SELECT COUNT(*) FROM asistencia WHERE miembro_id = ? AND ciclo = ? AND asistio_realmente = 0 AND (evento_id != ? OR fecha != ?)",
+                                    (miembro_id, ciclo, int(evento_id), str(fecha_evento))
+                                )
+                                inasistencias_previas = cursor_save.fetchone()[0]
+                                total_inasistencias = inasistencias_previas + 1
+                                if total_inasistencias >= 3:
+                                    warnings_list.append(f"⚠️ **{jugador}** acumula **{total_inasistencias}** inasistencias en el ciclo activo.")
+                            
+                            # Realizar UPSERT en la tabla asistencia
                             cursor_save.execute(
                                 "SELECT id FROM asistencia WHERE miembro_id=? AND evento_id=? AND ciclo=? AND fecha=?",
                                 (miembro_id, int(evento_id), ciclo, str(fecha_evento))
                             )
-                            registro_asistencia = cursor_save.fetchone()
+                            registro = cursor_save.fetchone()
                             
-                            if registro_asistencia:
+                            if registro:
                                 cursor_save.execute(
-                                    "UPDATE asistencia SET asistio_realmente=1 WHERE id=?",
-                                    (registro_asistencia[0],)
+                                    """UPDATE asistencia 
+                                       SET intencion=?, sala_asignada=?, asistio_realmente=? 
+                                       WHERE id=?""",
+                                    (intencion_db, sala_db, asistio_realmente_db, registro[0])
                                 )
                             else:
                                 cursor_save.execute(
-                                    '''INSERT INTO asistencia 
-                                       (miembro_id, evento_id, ciclo, fecha, estado_asistencia, intencion, asistio_realmente) 
-                                       VALUES (?, ?, ?, ?, 'Procesado', 'No votó', 1)''',
-                                    (miembro_id, int(evento_id), ciclo, str(fecha_evento))
+                                    """INSERT INTO asistencia 
+                                       (miembro_id, evento_id, ciclo, fecha, estado_asistencia, intencion, sala_asignada, asistio_realmente) 
+                                       VALUES (?, ?, ?, ?, 'Procesado', ?, ?, ?)""",
+                                    (miembro_id, int(evento_id), ciclo, str(fecha_evento), intencion_db, sala_db, asistio_realmente_db)
                                 )
-                                
-                            # 2. UPSERT estadisticas_guerra usando miembro_id, ciclo, evento_id, fecha
-                            efectividad = calcular_efectividad(kills, asistencias, muertes)
-                            cursor_save.execute(
-                                "SELECT id FROM estadisticas_guerra WHERE miembro_id=? AND ciclo=? AND evento_id=? AND fecha=?",
-                                (miembro_id, ciclo, int(evento_id), str(fecha_evento))
-                            )
-                            registro_stat = cursor_save.fetchone()
-                            
-                            if registro_stat:
-                                cursor_save.execute(
-                                    '''UPDATE estadisticas_guerra 
-                                       SET kills=?, asistencias=?, muertes_sufridas=?, puntaje_porcentaje=? 
-                                       WHERE id=?''',
-                                    (kills, asistencias, muertes, efectividad, registro_stat[0])
-                                )
-                            else:
-                                cursor_save.execute(
-                                    '''INSERT INTO estadisticas_guerra 
-                                       (miembro_id, ciclo, kills, asistencias, muertes_sufridas, puntaje_porcentaje, evento_id, fecha) 
-                                       VALUES (?, ?, ?, ?, ?, ?, ?, ?)''',
-                                    (miembro_id, ciclo, kills, asistencias, muertes, efectividad, int(evento_id), str(fecha_evento))
-                                )
-                            guardados += 1
-                            
-                    conexion_save.commit()
-                    conexion_save.close()
-                    
-                    if 'datos_asistencia_real' in st.session_state:
-                        del st.session_state['datos_asistencia_real']
                         
-                    st.success("✅ Asistencia y estadísticas guardadas con éxito.")
-                    st.rerun()
-                except Exception as e:
-                    st.error(f"Error al guardar los datos: {e}")
+                        conexion_save.commit()
+                        conexion_save.close()
+                        
+                        st.success("✅ Asistencia y distribución de salas guardadas con éxito.")
+                        
+                        # Disparar alertas de inasistencia acumuladas (si existen)
+                        if warnings_list:
+                            for warn_msg in warnings_list:
+                                st.warning(warn_msg)
+                        
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"Error técnico al guardar los datos: {e}")
+        else:
+            st.warning("No hay miembros activos registrados en la base de datos.")
 
-    # --- PASO 3: AUDITORÍA ---
+    # --- TAB 2: AUDITORÍA ---
     with tab_auditoria:
         st.subheader("Reporte de Cumplimiento Histórico (Ciclo Activo)")
         st.markdown(

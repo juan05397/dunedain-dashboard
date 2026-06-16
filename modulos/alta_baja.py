@@ -26,7 +26,8 @@ def normalizar_clase(nombre_clase, clases_db=None):
             clases_db = [c[0] for c in cursor.fetchall()]
             conn.close()
         except:
-            clases_db = ["Bárbaro", "Guerrero Divino", "Cazador de Demonios", "Monje", "Nigromante", "Arcanista", "Caballero Sangriento", "Tempestario", "Druida", "Brujo", "Desconocida"]
+            clases_db = ["Bárbaro", "Guerrero Divino", "Cazador de Demonios", "Monje", "Nigromante",
+                         "Arcanista", "Caballero Sangriento", "Tempestario", "Druida", "Brujo", "Desconocida"]
     for c in clases_db:
         if c.lower() == clase_lower:
             return c
@@ -39,10 +40,11 @@ def mostrar():
     # 1. Control de Permisos Dinámico
     es_admin = st.session_state.get('rol') == 'admin'
 
-    nombres_pestanas = ["🆕 Alta Individual",
-                        "❌ Baja Individual", "🔍 Buscar y Modificar"]
+    nombres_pestanas = ["🆕 Ingreso Individual",
+                        "❌ Egreso Individual", "🔍 Buscar y Modificar"]
     if es_admin:
-        nombres_pestanas.extend(["📥 Alta Masiva (CSV)", "💥 Baja Masiva", "🔄 Cambio de Clase Masiva"])
+        nombres_pestanas.extend(
+            ["📥 Ingreso Masivo (CSV)", "💥 Egreso Masivo", "🔄 Cambio de Clase Masiva"])
 
     pestanas = st.tabs(nombres_pestanas)
 
@@ -107,7 +109,8 @@ def mostrar():
                             try:
                                 conexion_write = conectar_bd()
                                 cursor_write = conexion_write.cursor()
-                                usuario_actual = st.session_state.get('usuario', 'Desconocido')
+                                usuario_actual = st.session_state.get(
+                                    'usuario', 'Desconocido')
                                 if miembro_bd:
                                     cursor_write.execute("UPDATE miembros SET estado='Expulsado', fecha_baja=?, motivo_baja=?, baja_realizada_por=? WHERE id=?", (
                                         str(date.today()), motivo_baja, usuario_actual, miembro_bd[0]))
@@ -132,12 +135,14 @@ def mostrar():
                     try:
                         conn_clases = conectar_bd()
                         cursor_clases = conn_clases.cursor()
-                        cursor_clases.execute("SELECT nombre FROM clases ORDER BY id")
+                        cursor_clases.execute(
+                            "SELECT nombre FROM clases ORDER BY id")
                         lista_clases = [c[0] for c in cursor_clases.fetchall()]
                         conn_clases.close()
                     except:
-                        lista_clases = ["Bárbaro", "Guerrero Divino", "Cazador de Demonios", "Monje", "Nigromante", "Arcanista", "Caballero Sangriento", "Tempestario", "Druida", "Brujo", "Desconocida"]
-                    
+                        lista_clases = ["Bárbaro", "Guerrero Divino", "Cazador de Demonios", "Monje", "Nigromante",
+                                        "Arcanista", "Caballero Sangriento", "Tempestario", "Druida", "Brujo", "Desconocida"]
+
                     with st.form("form_alta_normal"):
                         clase_nueva = st.selectbox("Clase:", lista_clases)
                         col_a, col_b = st.columns(2)
@@ -164,8 +169,10 @@ def mostrar():
                                 try:
                                     conexion_write = conectar_bd()
                                     cursor_write = conexion_write.cursor()
-                                    usuario_actual = st.session_state.get('usuario', 'Desconocido')
-                                    clase_nueva_norm = normalizar_clase(clase_nueva)
+                                    usuario_actual = st.session_state.get(
+                                        'usuario', 'Desconocido')
+                                    clase_nueva_norm = normalizar_clase(
+                                        clase_nueva)
                                     if miembro_bd:
                                         cursor_write.execute("UPDATE miembros SET clase=?, resonancia=?, ic=?, telefono=?, usa_discord=?, usa_whatsapp=?, fecha_ingreso=?, estado='Activo', fecha_baja=NULL, alta_realizada_por=? WHERE id=?", (
                                             clase_nueva_norm, reso_nueva, ic_nuevo, telefono_nuevo, check_disc, check_wa, str(fecha_ingreso), usuario_actual, miembro_bd[0]))
@@ -209,7 +216,8 @@ def mostrar():
                             miembro_id = df_activos[df_activos['nombre']
                                                     == miembro_baja]['id'].values[0]
                             nuevo_estado = 'Expulsado' if es_veto else 'Inactivo'
-                            usuario_actual = st.session_state.get('usuario', 'Desconocido')
+                            usuario_actual = st.session_state.get(
+                                'usuario', 'Desconocido')
                             cursor_write.execute("UPDATE miembros SET estado=?, fecha_baja=?, motivo_baja=?, baja_realizada_por=? WHERE id=?", (
                                 nuevo_estado, str(fecha_baja), motivo_baja, usuario_actual, int(miembro_id)))
                             if es_veto:
@@ -263,10 +271,12 @@ def mostrar():
                 clases_permitidas = [c[0] for c in cursor_clases.fetchall()]
                 conn_clases.close()
             except:
-                clases_permitidas = ["Bárbaro", "Guerrero Divino", "Cazador de Demonios", "Monje", "Nigromante", "Arcanista", "Caballero Sangriento", "Tempestario", "Druida", "Brujo", "Desconocida"]
+                clases_permitidas = ["Bárbaro", "Guerrero Divino", "Cazador de Demonios", "Monje", "Nigromante",
+                                     "Arcanista", "Caballero Sangriento", "Tempestario", "Druida", "Brujo", "Desconocida"]
 
             with st.form("form_modificar"):
-                nombre_mod = st.text_input("Nombre del Personaje (Nick):", value=str(jugador_data['nombre'])).strip()
+                nombre_mod = st.text_input(
+                    "Nombre del Personaje (Nick):", value=str(jugador_data['nombre'])).strip()
                 clase_actual = jugador_data['clase']
                 idx_clase = clases_permitidas.index(
                     clase_actual) if clase_actual in clases_permitidas else 0
@@ -294,21 +304,23 @@ def mostrar():
                         st.error("⚠️ El Nombre del Personaje es obligatorio.")
                     elif not telefono_mod or reso_mod <= 0 or ic_mod <= 0:
                         st.error(
-                             "⚠️ Teléfono, Resonancia e IC son campos obligatorios y mayores a cero.")
+                            "⚠️ Teléfono, Resonancia e IC son campos obligatorios y mayores a cero.")
                     else:
                         try:
                             conexion_write = conectar_bd()
                             cursor_write = conexion_write.cursor()
-                            
+
                             # Validar duplicado si cambia de nombre
                             duplicado = False
                             if nombre_mod.lower() != jugador_data['nombre'].lower():
-                                cursor_write.execute("SELECT id FROM miembros WHERE LOWER(nombre) = LOWER(?) AND id != ?", (nombre_mod, int(jugador_data['id'])))
+                                cursor_write.execute(
+                                    "SELECT id FROM miembros WHERE LOWER(nombre) = LOWER(?) AND id != ?", (nombre_mod, int(jugador_data['id'])))
                                 if cursor_write.fetchone():
                                     duplicado = True
-                                     
+
                             if duplicado:
-                                st.error("❌ El nombre ingresado ya pertenece a otro miembro del clan.")
+                                st.error(
+                                    "❌ El nombre ingresado ya pertenece a otro miembro del clan.")
                                 conexion_write.close()
                             else:
                                 clase_mod_norm = normalizar_clase(clase_mod)
@@ -335,18 +347,21 @@ def mostrar():
             st.subheader("📥 Carga y Actualización Masiva")
             st.markdown(
                 "Sube un archivo `.csv` o `.xlsx` estructurado para actualizar o registrar múltiples miembros del clan.")
-            
+
             # --- Generador Dinámico de Plantilla Excel ---
             import io
-            df_plantilla = pd.DataFrame(columns=['Nombre', 'Clase', 'Resonancia', 'IC', 'Telefono', 'WhatsApp', 'Discord'])
+            df_plantilla = pd.DataFrame(
+                columns=['Nombre', 'Clase', 'Resonancia', 'IC', 'Telefono', 'WhatsApp', 'Discord'])
             # Fila de ejemplo
-            df_plantilla.loc[0] = ['EjemploNombre', 'Nigromante', 1000, 15000, '+123456789', 'Si', 'Si']
-            
+            df_plantilla.loc[0] = ['EjemploNombre', 'Nigromante',
+                                   1000, 15000, '+123456789', 'Si', 'Si']
+
             buffer = io.BytesIO()
             with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
-                df_plantilla.to_excel(writer, index=False, sheet_name='Plantilla Roster')
+                df_plantilla.to_excel(
+                    writer, index=False, sheet_name='Plantilla Roster')
             buffer.seek(0)
-            
+
             st.download_button(
                 label="📥 Descargar Plantilla Excel (.xlsx)",
                 data=buffer,
@@ -354,7 +369,7 @@ def mostrar():
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                 help="Descarga una plantilla de ejemplo estructurada para rellenar tus datos masivamente"
             )
-            
+
             st.info("💡 **Regla de actualización masiva:**\n"
                     "- Si el jugador **ya existe y está activo**, se actualizarán su Clase, Resonancia, IC, Teléfono, WhatsApp y Discord con los nuevos datos.\n"
                     "- Si el jugador **ya existía pero estaba inactivo/expulsado**, se reactivará (estado 'Activo') y se actualizarán sus estadísticas (excepto si tiene veto definitivo).\n"
@@ -378,12 +393,14 @@ def mostrar():
                             conexion = conectar_bd()
                             cursor = conexion.cursor()
                             hoy = str(date.today())
-                            usuario_actual = st.session_state.get('usuario', 'Desconocido')
+                            usuario_actual = st.session_state.get(
+                                'usuario', 'Desconocido')
 
                             # Cargar clases una sola vez para optimizar la carga masiva
                             try:
                                 cursor.execute("SELECT nombre FROM clases")
-                                lista_clases_masiva = [c[0] for c in cursor.fetchall()]
+                                lista_clases_masiva = [c[0]
+                                                       for c in cursor.fetchall()]
                             except:
                                 lista_clases_masiva = None
 
@@ -412,18 +429,24 @@ def mostrar():
                                     except:
                                         return default
 
-                                cla = normalizar_clase(limpiar_string(fila.get('Clase'), 'Desconocida'), clases_db=lista_clases_masiva)
+                                cla = normalizar_clase(limpiar_string(
+                                    fila.get('Clase'), 'Desconocida'), clases_db=lista_clases_masiva)
                                 res = limpiar_int(fila.get('Resonancia'), 0)
                                 ic = limpiar_int(fila.get('IC'), 0)
                                 tel = limpiar_string(fila.get('Telefono'), '')
                                 if tel.endswith('.0'):
-                                    tel = tel[:-2]  # Corregir floats tipo "12345.0"
-                                
-                                wa_str = limpiar_string(fila.get('WhatsApp'), 'No').lower()
-                                disc_str = limpiar_string(fila.get('Discord'), 'No').lower()
-                                
-                                wa = 1 if wa_str in ['si', 'sí', 'yes', 'true', '1'] else 0
-                                disc = 1 if disc_str in ['si', 'sí', 'yes', 'true', '1'] else 0
+                                    # Corregir floats tipo "12345.0"
+                                    tel = tel[:-2]
+
+                                wa_str = limpiar_string(
+                                    fila.get('WhatsApp'), 'No').lower()
+                                disc_str = limpiar_string(
+                                    fila.get('Discord'), 'No').lower()
+
+                                wa = 1 if wa_str in [
+                                    'si', 'sí', 'yes', 'true', '1'] else 0
+                                disc = 1 if disc_str in [
+                                    'si', 'sí', 'yes', 'true', '1'] else 0
 
                                 # Consultar existencia en base de datos
                                 cursor.execute(
@@ -432,7 +455,7 @@ def mostrar():
 
                                 if bd_data:
                                     id_jugador, estado_actual = bd_data[0], bd_data[1]
-                                    
+
                                     # Verificar veto definitivo antes de cualquier acción
                                     cursor.execute(
                                         "SELECT 1 FROM sanciones s JOIN tipos_sancion t ON s.tipo_sancion_id = t.id WHERE s.miembro_id=? AND t.nombre='Definitiva'", (id_jugador,))
@@ -467,25 +490,31 @@ def mostrar():
                             conexion.commit()
                             conexion.close()
 
-                            st.success(f"🎉 ¡Procesamiento masivo finalizado exitosamente!")
+                            st.success(
+                                f"🎉 ¡Procesamiento masivo finalizado exitosamente!")
 
                             if lista_nuevos:
-                                st.warning(f"🆕 **{len(lista_nuevos)} Nuevos Miembros Registrados:**")
+                                st.warning(
+                                    f"🆕 **{len(lista_nuevos)} Nuevos Miembros Registrados:**")
                                 st.markdown(", ".join(lista_nuevos))
 
                             if lista_actualizados:
-                                st.info(f"🔄 **{len(lista_actualizados)} Miembros Activos Actualizados:**")
+                                st.info(
+                                    f"🔄 **{len(lista_actualizados)} Miembros Activos Actualizados:**")
                                 st.markdown(", ".join(lista_actualizados))
 
                             if lista_reingresos:
-                                st.success(f"✨ **{len(lista_reingresos)} Reingresos Exitosos (Ex-miembros reactivados):**")
+                                st.success(
+                                    f"✨ **{len(lista_reingresos)} Reingresos Exitosos (Ex-miembros reactivados):**")
                                 st.markdown(", ".join(lista_reingresos))
 
                             if lista_bloqueados:
-                                st.error(f"🚫 **Se ignoraron por poseer Veto Definitivo:** {', '.join(lista_bloqueados)}")
+                                st.error(
+                                    f"🚫 **Se ignoraron por poseer Veto Definitivo:** {', '.join(lista_bloqueados)}")
 
                             if not lista_nuevos and not lista_actualizados and not lista_reingresos and not lista_bloqueados:
-                                st.info("Todos los jugadores del archivo ya se encontraban activos e idénticos en el sistema.")
+                                st.info(
+                                    "Todos los jugadores del archivo ya se encontraban activos e idénticos en el sistema.")
 
                     except Exception as e:
                         st.error(f"Error al procesar el archivo: {e}")
@@ -494,8 +523,9 @@ def mostrar():
             st.subheader("💥 Limpieza General de Miembros")
             st.error(
                 "⚠️ **ESTA ACCIÓN ES IRREVERSIBLE:** Dará de baja a TODOS los miembros activos del clan, cambiándolos a estado 'Inactivo'.")
-            
-            motivo_masivo = st.text_area("Motivo de la baja masiva (Ej: Fin de ciclo, limpieza de temporada, etc.):").strip()
+
+            motivo_masivo = st.text_area(
+                "Motivo de la baja masiva (Ej: Fin de ciclo, limpieza de temporada, etc.):").strip()
             st.markdown("¿Desea continuar con la baja masiva?")
 
             col_si, col_no = st.columns(2)
@@ -503,16 +533,18 @@ def mostrar():
             with col_si:
                 if st.button("✔️ Sí, dar de baja a todos", type="primary", use_container_width=True):
                     if not motivo_masivo:
-                        st.error("❌ El motivo de la baja masiva es obligatorio.")
+                        st.error(
+                            "❌ El motivo de la baja masiva es obligatorio.")
                     else:
                         try:
                             conexion = conectar_bd()
                             cursor = conexion.cursor()
                             hoy = str(date.today())
-                            usuario_actual = st.session_state.get('usuario', 'Desconocido')
+                            usuario_actual = st.session_state.get(
+                                'usuario', 'Desconocido')
 
                             cursor.execute(
-                                "UPDATE miembros SET estado='Inactivo', fecha_baja=?, motivo_baja=?, baja_realizada_por=? WHERE estado='Activo'", 
+                                "UPDATE miembros SET estado='Inactivo', fecha_baja=?, motivo_baja=?, baja_realizada_por=? WHERE estado='Activo'",
                                 (hoy, motivo_masivo, usuario_actual)
                             )
                             afectados = cursor.rowcount
@@ -536,13 +568,13 @@ def mostrar():
                 "Sube el archivo CSV de exportación del juego para actualizar en bloque la **Clase** y el **Rango de Sombra** "
                 "de todos los personajes activos."
             )
-            
+
             archivo_clase_masiva = st.file_uploader(
-                "Subir archivo de exportación (.csv o .xlsx):", 
-                type=['csv', 'xlsx'], 
+                "Subir archivo de exportación (.csv o .xlsx):",
+                type=['csv', 'xlsx'],
                 key="uploader_cambio_clase"
             )
-            
+
             if archivo_clase_masiva:
                 try:
                     # Detectar y leer formato
@@ -550,45 +582,51 @@ def mostrar():
                         df_subido = pd.read_csv(archivo_clase_masiva)
                     else:
                         df_subido = pd.read_excel(archivo_clase_masiva)
-                        
+
                     # Normalizar nombres de columnas a minúsculas y sin espacios
-                    columnas_archivo = {c.strip().lower(): c.strip() for c in df_subido.columns}
-                    
+                    columnas_archivo = {c.strip().lower(): c.strip()
+                                        for c in df_subido.columns}
+
                     col_nombre = None
                     for pos in ['nombre', 'nombre de personaje', 'jugador', 'name']:
                         if pos in columnas_archivo:
                             col_nombre = columnas_archivo[pos]
                             break
-                    
+
                     col_clase = None
                     for pos in ['clase', 'class']:
                         if pos in columnas_archivo:
                             col_clase = columnas_archivo[pos]
                             break
-                            
+
                     col_rango = None
                     for pos in ['rango de sombra', 'rango sombra', 'rango', 'shadow rank']:
                         if pos in columnas_archivo:
                             col_rango = columnas_archivo[pos]
                             break
-                            
+
                     # Validar estructura mínima
                     if not col_nombre or not col_clase:
-                        st.error("❌ El archivo debe contener al menos las columnas de 'Nombre' (o Jugador) y 'Clase'.")
+                        st.error(
+                            "❌ El archivo debe contener al menos las columnas de 'Nombre' (o Jugador) y 'Clase'.")
                     else:
                         # Extraer lista de nombres limpia de espacios accidentales (normalización requerida)
-                        nombres_csv = df_subido[col_nombre].dropna().astype(str).str.strip().unique().tolist()
-                        
+                        nombres_csv = df_subido[col_nombre].dropna().astype(
+                            str).str.strip().unique().tolist()
+
                         # Consultar miembros activos
                         conexion = conectar_bd()
-                        df_activos = pd.read_sql_query("SELECT nombre FROM miembros WHERE estado='Activo'", conexion)
+                        df_activos = pd.read_sql_query(
+                            "SELECT nombre FROM miembros WHERE estado='Activo'", conexion)
                         conexion.close()
-                        
-                        nombres_activos_set = {n.strip().lower() for n in df_activos['nombre']}
-                        
+
+                        nombres_activos_set = {n.strip().lower()
+                                               for n in df_activos['nombre']}
+
                         # Buscar jugadores del CSV que no estén registrados en activos (normalizado)
-                        no_registrados = [n for n in nombres_csv if n.strip().lower() not in nombres_activos_set]
-                        
+                        no_registrados = [n for n in nombres_csv if n.strip(
+                        ).lower() not in nombres_activos_set]
+
                         if no_registrados:
                             st.error(
                                 f"❌ **Error de Validación:** Los siguientes **{len(no_registrados)}** jugadores del archivo "
@@ -600,47 +638,56 @@ def mostrar():
                                 "antes de realizar la actualización de clases."
                             )
                             # Botón de guardar deshabilitado
-                            st.button("Confirmar Cambios de Clase", disabled=True, key="btn_cambio_clase_disabled")
+                            st.button("Confirmar Cambios de Clase",
+                                      disabled=True, key="btn_cambio_clase_disabled")
                         else:
-                            st.success("✅ Todos los personajes del archivo coinciden con miembros activos en el sistema.")
-                            
+                            st.success(
+                                "✅ Todos los personajes del archivo coinciden con miembros activos en el sistema.")
+
                             if st.button("Confirmar Cambios de Clase", type="primary", key="btn_cambio_clase_enabled"):
                                 try:
                                     conexion_write = conectar_bd()
                                     cursor_write = conexion_write.cursor()
-                                    
+
                                     # Consultar nombres de clases en base de datos para alias
                                     try:
-                                        cursor_write.execute("SELECT nombre FROM clases")
-                                        clases_db = [c[0] for c in cursor_write.fetchall()]
+                                        cursor_write.execute(
+                                            "SELECT nombre FROM clases")
+                                        clases_db = [c[0]
+                                                     for c in cursor_write.fetchall()]
                                     except:
                                         clases_db = None
-                                        
+
                                     actualizados = 0
                                     for _, fila in df_subido.iterrows():
                                         nom = str(fila[col_nombre]).strip()
-                                        cla_sucia = str(fila[col_clase]).strip()
-                                        
+                                        cla_sucia = str(
+                                            fila[col_clase]).strip()
+
                                         # Rango de Sombra opcional
                                         rango = "Sin Rango"
                                         if col_rango and pd.notna(fila[col_rango]):
-                                            rango = str(fila[col_rango]).strip()
-                                            
+                                            rango = str(
+                                                fila[col_rango]).strip()
+
                                         # Normalizar y mapear usando los alias definidos en la base de datos
-                                        cla_norm = normalizar_clase(cla_sucia, clases_db=clases_db)
-                                        
+                                        cla_norm = normalizar_clase(
+                                            cla_sucia, clases_db=clases_db)
+
                                         # Actualizar únicamente clase y rango_sombra
                                         cursor_write.execute(
                                             "UPDATE miembros SET clase = ?, rango_sombra = ? WHERE LOWER(nombre) = LOWER(?) AND estado = 'Activo'",
                                             (cla_norm, rango, nom)
                                         )
                                         actualizados += cursor_write.rowcount
-                                        
+
                                     conexion_write.commit()
                                     conexion_write.close()
-                                    st.success(f"🎉 ¡Actualización masiva completada! Se actualizaron {actualizados} miembros activos.")
+                                    st.success(
+                                        f"🎉 ¡Actualización masiva completada! Se actualizaron {actualizados} miembros activos.")
                                     st.rerun()
                                 except Exception as e:
-                                    st.error(f"❌ Error al procesar la actualización en base de datos: {e}")
+                                    st.error(
+                                        f"❌ Error al procesar la actualización en base de datos: {e}")
                 except Exception as e:
                     st.error(f"❌ Error al leer el archivo: {e}")
