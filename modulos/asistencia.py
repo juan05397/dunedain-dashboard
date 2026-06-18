@@ -189,7 +189,7 @@ def mostrar():
             # --- CONTADOR DE VOTOS EN TIEMPO REAL ---
             if df_editado is not None and not df_editado.empty:
                 st.write("")
-                st.markdown("##### 📊 Resumen de Respuestas (WhatsApp)")
+                st.markdown("##### 📊 Resumen de Respuestas y Asistencia en Tiempo Real")
                 
                 # Obtener conteos dinámicos
                 votos = df_editado["Intención de Voto"].value_counts()
@@ -197,8 +197,9 @@ def mostrar():
                 no_puedo = int(votos.get("NO PUEDO", 0))
                 no_aseguro = int(votos.get("NO ASEGURO", 0))
                 no_voto = int(votos.get("NO VOTO", 0))
+                asistencia_real = int(df_editado["Asistencia Real"].sum())
                 
-                col_v1, col_v2, col_v3, col_v4 = st.columns(4)
+                col_v1, col_v2, col_v3, col_v4, col_v5 = st.columns(5)
                 with col_v1:
                     st.metric("🟢 SÍ PUEDO", si_puedo)
                 with col_v2:
@@ -207,6 +208,8 @@ def mostrar():
                     st.metric("🔴 NO PUEDO", no_puedo)
                 with col_v4:
                     st.metric("⚪ NO VOTO", no_voto)
+                with col_v5:
+                    st.metric("✅ ASISTIERON", asistencia_real)
                 
                 st.write("")
 
