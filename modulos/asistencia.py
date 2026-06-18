@@ -186,6 +186,30 @@ def mostrar():
                 key="editor_asistencia_salas_grid"
             )
 
+            # --- CONTADOR DE VOTOS EN TIEMPO REAL ---
+            if df_editado is not None and not df_editado.empty:
+                st.write("")
+                st.markdown("##### 📊 Resumen de Respuestas (WhatsApp)")
+                
+                # Obtener conteos dinámicos
+                votos = df_editado["Intención de Voto"].value_counts()
+                si_puedo = int(votos.get("SÍ PUEDO", 0))
+                no_puedo = int(votos.get("NO PUEDO", 0))
+                no_aseguro = int(votos.get("NO ASEGURO", 0))
+                no_voto = int(votos.get("NO VOTO", 0))
+                
+                col_v1, col_v2, col_v3, col_v4 = st.columns(4)
+                with col_v1:
+                    st.metric("🟢 SÍ PUEDO", si_puedo)
+                with col_v2:
+                    st.metric("🔴 NO PUEDO", no_puedo)
+                with col_v3:
+                    st.metric("🟡 NO ASEGURO", no_aseguro)
+                with col_v4:
+                    st.metric("⚪ NO VOTO", no_voto)
+                
+                st.write("")
+
             # Botón de guardar
             if st.button("💾 Actualizar y Guardar Asistencia y Salas", type="primary", use_container_width=True):
                 # 1. Validación de Salas: máximo 8 jugadores por sala (excluyendo "No asignado")
