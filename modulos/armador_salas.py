@@ -1,6 +1,25 @@
 import streamlit as st
 import pandas as pd
+import re
 from database import conectar_bd
+
+
+def normalizar_sala_db(sala_db):
+    if not sala_db:
+        return ""
+    # Remover espacios en los extremos
+    s = sala_db.strip()
+    if s.lower() == "no asignado":
+        return "No asignado"
+    
+    # Buscar patrones como "sala 1 (8 pts)" o "sala 2 (1 pt)"
+    match = re.search(r'sala\s*(\d+)\s*\(\s*(\d+)\s*(?:pts|pt|puntos|punto)?\s*\)', s, re.IGNORECASE)
+    if match:
+        num_sala = match.group(1)
+        puntos = match.group(2)
+        return f"Sala {num_sala} ({puntos} Pts)"
+        
+    return s
 
 
 def mostrar():
@@ -23,6 +42,9 @@ def mostrar():
 
     nombres_activos = df_activos['nombre'].tolist()
     datos_jugadores = df_activos.set_index('nombre').to_dict('index')
+
+    # Crear mapeo de nombres activos normalizados para comparación segura
+    nombres_activos_normalizados = {str(n).strip().lower(): n for n in nombres_activos}
 
     # ==========================================
     # PRECARGA AUTOMÁTICA DE EVENTOS Y SALAS
@@ -68,16 +90,14 @@ def mostrar():
                 
                 if not df_dist.empty:
                     for _, row in df_dist.iterrows():
-                        sala = row['sala_asignada']
-                        nombre_jugador = row['nombre']
-                        if sala and sala != 'No asignado':
-                            # Normalizar "1 Pt" a "1 Pts" para que coincida con la UI
-                            if "1 Pt" in sala and "1 Pts" not in sala:
-                                sala = sala.replace("1 Pt", "1 Pts")
-                            
-                            if sala not in distribucion_salas:
-                                distribucion_salas[sala] = []
-                            distribucion_salas[sala].append(nombre_jugador)
+                        sala_raw = row['sala_asignada']
+                        nombre_raw = row['nombre']
+                        if sala_raw:
+                            sala_norm = normalizar_sala_db(sala_raw)
+                            if sala_norm != 'No asignado':
+                                if sala_norm not in distribucion_salas:
+                                    distribucion_salas[sala_norm] = []
+                                distribucion_salas[sala_norm].append(nombre_raw)
             
             conexion_as.close()
         except Exception as e:
@@ -116,9 +136,12 @@ def mostrar():
                 st.markdown(
                     f"<h5 style='text-align: center; color: #4DA8DA;'>{nombre_sala}</h5>", unsafe_allow_html=True)
 
-                # Obtener los jugadores asignados previamente a esta sala (solo si siguen activos)
-                default_jugadores = distribucion_salas.get(nombre_sala, [])
-                default_jugadores = [p for p in default_jugadores if p in nombres_activos]
+                # Obtener los jugadores asignados previamente a esta sala (solo si siguen activos en el sistema)
+                default_jugadores = []
+                for p_raw in distribucion_salas.get(nombre_sala, []):
+                    p_clean = str(p_raw).strip().lower()
+                    if p_clean in nombres_activos_normalizados:
+                        default_jugadores.append(nombres_activos_normalizados[p_clean])
 
                 seleccion = st.multiselect(
                     f"Jugadores {nombre_sala}",
