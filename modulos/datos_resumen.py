@@ -10,7 +10,7 @@ def mostrar():
 
         # 1. Consultar Activos (Omitimos traer el 'id' de la BD)
         df_activos = pd.read_sql_query(
-            "SELECT nombre, clase, resonancia, ic, estado, alta_realizada_por FROM miembros WHERE estado='Activo' ORDER BY nombre", conexion)
+            "SELECT nombre, clase, resonancia, ic, estado, alta_realizada_por, ex_clan FROM miembros WHERE estado='Activo' ORDER BY nombre", conexion)
 
         # 2. Consultar Inactivos/Expulsados (Agregamos la fecha de baja para que sea útil)
         df_inactivos = pd.read_sql_query(
@@ -73,7 +73,8 @@ def mostrar():
                 'resonancia': 'Resonancia',
                 'ic': 'IC',
                 'estado': 'Estado',
-                'alta_realizada_por': 'Alta realizada por'
+                'alta_realizada_por': 'Alta realizada por',
+                'ex_clan': 'Ex Clan'
             })
             st.dataframe(df_activos_visual, use_container_width=True, hide_index=True)
 

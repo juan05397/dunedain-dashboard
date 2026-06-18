@@ -159,6 +159,7 @@ def mostrar():
 
                         check_wa = st.checkbox("¿Está en WhatsApp?")
                         check_disc = st.checkbox("¿Está en Discord?")
+                        ex_clan_nuevo = st.text_input("Ex Clan", value="").strip()
                         btn_alta = st.form_submit_button("💾 Guardar Miembro")
 
                         if btn_alta:
@@ -174,11 +175,11 @@ def mostrar():
                                     clase_nueva_norm = normalizar_clase(
                                         clase_nueva)
                                     if miembro_bd:
-                                        cursor_write.execute("UPDATE miembros SET clase=?, resonancia=?, ic=?, telefono=?, usa_discord=?, usa_whatsapp=?, fecha_ingreso=?, estado='Activo', fecha_baja=NULL, alta_realizada_por=? WHERE id=?", (
-                                            clase_nueva_norm, reso_nueva, ic_nuevo, telefono_nuevo, check_disc, check_wa, str(fecha_ingreso), usuario_actual, miembro_bd[0]))
+                                        cursor_write.execute("UPDATE miembros SET clase=?, resonancia=?, ic=?, telefono=?, usa_discord=?, usa_whatsapp=?, fecha_ingreso=?, estado='Activo', fecha_baja=NULL, alta_realizada_por=?, ex_clan=? WHERE id=?", (
+                                            clase_nueva_norm, reso_nueva, ic_nuevo, telefono_nuevo, check_disc, check_wa, str(fecha_ingreso), usuario_actual, ex_clan_nuevo, miembro_bd[0]))
                                     else:
-                                        cursor_write.execute("INSERT INTO miembros (nombre, clase, resonancia, ic, telefono, usa_discord, usa_whatsapp, fecha_ingreso, estado, alta_realizada_por) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'Activo', ?)", (
-                                            nombre_nuevo, clase_nueva_norm, reso_nueva, ic_nuevo, telefono_nuevo, check_disc, check_wa, str(fecha_ingreso), usuario_actual))
+                                        cursor_write.execute("INSERT INTO miembros (nombre, clase, resonancia, ic, telefono, usa_discord, usa_whatsapp, fecha_ingreso, estado, alta_realizada_por, ex_clan) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'Activo', ?, ?)", (
+                                            nombre_nuevo, clase_nueva_norm, reso_nueva, ic_nuevo, telefono_nuevo, check_disc, check_wa, str(fecha_ingreso), usuario_actual, ex_clan_nuevo))
                                     conexion_write.commit()
                                     conexion_write.close()
                                     st.success(
