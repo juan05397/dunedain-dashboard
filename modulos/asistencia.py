@@ -202,9 +202,9 @@ def mostrar():
                 with col_v1:
                     st.metric("🟢 SÍ PUEDO", si_puedo)
                 with col_v2:
-                    st.metric("🔴 NO PUEDO", no_puedo)
-                with col_v3:
                     st.metric("🟡 NO ASEGURO", no_aseguro)
+                with col_v3:
+                    st.metric("🔴 NO PUEDO", no_puedo)
                 with col_v4:
                     st.metric("⚪ NO VOTO", no_voto)
                 
