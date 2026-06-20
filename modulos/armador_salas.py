@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import re
+import datetime
 from database import conectar_bd
 
 
@@ -26,6 +27,33 @@ def mostrar():
     st.title("🗺️ Armador de Salas - Guerra Sombría")
     st.markdown(
         "Busca a los jugadores en el recuadro y el sistema armará las tablas automáticamente simulando tu Excel.")
+
+    # 1. Estructura de salas para control de estado
+    estructura_salas = [
+        {"puntos": 8, "cantidad": 3},
+        {"puntos": 4, "cantidad": 3},
+        {"puntos": 2, "cantidad": 3},
+        {"puntos": 1, "cantidad": 3}
+    ]
+
+    # 2. Control de estado y limpieza al cambiar de evento
+    if 'ultimo_evento_seleccionado' not in st.session_state:
+        st.session_state['ultimo_evento_seleccionado'] = None
+
+    if 'selector_evento_armador' in st.session_state:
+        evento_actual = st.session_state['selector_evento_armador']
+        if evento_actual != st.session_state['ultimo_evento_seleccionado']:
+            # Limpiar todas las claves de las salas de st.session_state
+            for categoria in estructura_salas:
+                pts = categoria["puntos"]
+                for i in range(categoria["cantidad"]):
+                    nombre_sala = f"Sala {i+1} ({pts} Pts)"
+                    if nombre_sala in st.session_state:
+                        del st.session_state[nombre_sala]
+            
+            # Guardar el nuevo evento y forzar rerun
+            st.session_state['ultimo_evento_seleccionado'] = evento_actual
+            st.rerun()
 
     try:
         conexion = conectar_bd()
@@ -62,10 +90,37 @@ def mostrar():
     fecha_mas_reciente = None
 
     if not df_eventos.empty:
+        # Calcular el índice por defecto según el día de la semana actual
+        indice_defecto = 0
+        try:
+            dias_es = ["lunes", "martes", "miércoles", "jueves", "viernes", "sábado", "domingo"]
+            dias_es_sin_tilde = ["lunes", "martes", "miercoles", "jueves", "viernes", "sabado", "domingo"]
+            
+            dia_actual_es = dias_es[datetime.date.today().weekday()]
+            dia_actual_es_sin = dias_es_sin_tilde[datetime.date.today().weekday()]
+            
+            for idx, row in df_eventos.iterrows():
+                nombre_ev_lower = str(row['nombre']).lower()
+                if dia_actual_es in nombre_ev_lower or dia_actual_es_sin in nombre_ev_lower:
+                    indice_defecto = idx
+                    break
+            else:
+                # Si no coincide con el día de la semana, seleccionar el último evento registrado
+                indice_defecto = len(df_eventos) - 1
+        except Exception:
+            indice_defecto = len(df_eventos) - 1
+
         evento_seleccionado = st.selectbox(
             "Seleccionar Evento para Precargar Salas:",
-            df_eventos['nombre']
+            options=df_eventos['nombre'],
+            index=indice_defecto,
+            key='selector_evento_armador'
         )
+        
+        # Sincronizar el primer valor al iniciar
+        if st.session_state['ultimo_evento_seleccionado'] is None:
+            st.session_state['ultimo_evento_seleccionado'] = evento_seleccionado
+            
         evento_id = df_eventos[df_eventos['nombre'] == evento_seleccionado]['id'].values[0]
         
         try:
@@ -98,24 +153,37 @@ def mostrar():
                                 if sala_norm not in distribucion_salas:
                                     distribucion_salas[sala_norm] = []
                                 distribucion_salas[sala_norm].append(nombre_raw)
-            
             conexion_as.close()
         except Exception as e:
             st.error(f"Error al cargar la última asignación de salas: {e}")
 
+        # --- AUTO-SINCRONIZACIÓN DE CACHÉ (INVALIDACIÓN DE MEMORIA) ---
+        # Ordenamos los nombres de los jugadores y de las salas para que la representación en cadena sea determinista
+        distribucion_estable = {s: sorted(players) for s, players in distribucion_salas.items()}
+        current_db_hash = str(sorted(distribucion_estable.items()))
+        
+        last_db_hash = st.session_state.get('last_db_hash_armador')
+        
+        if last_db_hash != current_db_hash:
+            # Borrar de session_state las claves de las salas para obligar a tomar los nuevos defaults de la BD
+            for categoria in estructura_salas:
+                pts = categoria["puntos"]
+                for i in range(categoria["cantidad"]):
+                    nombre_sala = f"Sala {i+1} ({pts} Pts)"
+                    if nombre_sala in st.session_state:
+                        del st.session_state[nombre_sala]
+            
+            # Guardar el nuevo hash y forzar rerun
+            st.session_state['last_db_hash_armador'] = current_db_hash
+            st.rerun()
+
+        # Mensajes de estado sobre la precarga
         if fecha_mas_reciente and distribucion_salas:
             st.info(f"💡 Se ha precargado la última distribución del evento registrada el **{fecha_mas_reciente}**.")
         elif fecha_mas_reciente:
-            st.info(f"ℹ️ El evento seleccionado tiene asistencia registrada el **{fecha_mas_reciente}**, pero no se encontraron jugadores asignados a salas.")
+            st.info(f"ℹ️ No hay una distribución de salas guardada para este evento en la fecha registrada ({fecha_mas_reciente}).")
         else:
-            st.info("ℹ️ No hay registros previos de asistencia o distribución de salas para este evento.")
-
-    estructura_salas = [
-        {"puntos": 8, "cantidad": 3},
-        {"puntos": 4, "cantidad": 3},
-        {"puntos": 2, "cantidad": 3},
-        {"puntos": 1, "cantidad": 3}
-    ]
+            st.info("ℹ️ No hay una distribución de salas guardada para este evento en esta fecha.")
 
     selecciones_globales = {}
     todos_seleccionados = []
