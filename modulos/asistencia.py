@@ -4,6 +4,7 @@ import pandas as pd
 import re
 import os
 import sys
+import plotly.express as px
 from datetime import date
 from database import conectar_bd, obtener_ciclo_activo
 
@@ -360,8 +361,37 @@ def mostrar():
                 'Asistieron_Realmente': 'Asistieron Realmente (In-Game)'
             })
             
-            # Graficar usando st.line_chart
-            st.line_chart(df_chart.set_index('fecha'))
+            # Reestructurar el DataFrame para que sea compatible con barras agrupadas de Plotly
+            df_melted = pd.melt(
+                df_chart,
+                id_vars=['fecha'],
+                value_vars=['Votaron "Sí puedo" (WhatsApp)', 'Asistieron Realmente (In-Game)'],
+                var_name='Categoría',
+                value_name='Cantidad'
+            )
+            
+            # Crear gráfico de barras agrupadas interactivo usando Plotly
+            fig = px.bar(
+                df_melted,
+                x='fecha',
+                y='Cantidad',
+                color='Categoría',
+                barmode='group',
+                color_discrete_map={
+                    'Votaron "Sí puedo" (WhatsApp)': '#1f77b4',  # azul contrastante
+                    'Asistieron Realmente (In-Game)': '#2ca02c'   # verde contrastante
+                },
+                labels={'fecha': 'Fecha', 'Cantidad': 'Cantidad de Jugadores'},
+                title='Votos ("Sí puedo") vs. Asistencia Real'
+            )
+            
+            # Ajustar margen y leyenda
+            fig.update_layout(
+                margin=dict(l=20, r=20, t=40, b=20),
+                legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
+            )
+            
+            st.plotly_chart(fig, use_container_width=True)
 
             st.write("")
             st.divider()
@@ -404,16 +434,37 @@ def mostrar():
             # Completar registros nulos
             df_pivot = df_pivot.fillna("❌ Ausente")
             
-            # Calcular columna acumulativa "Contar Asistencia"
+            # Calcular columnas acumulativas
             df_pivot['Contar Asistencia'] = (df_pivot == '✅ OK').sum(axis=1)
+            df_pivot['Contar Infracción'] = (df_pivot == '🚨 INFRACCIÓN').sum(axis=1)
+            df_pivot['Contar Ausente'] = (df_pivot == '❌ Ausente').sum(axis=1)
             
             # Renombrar índices para presentación visual limpia
             df_pivot_visual = df_pivot.rename_axis(index={'jugador': 'Jugador', 'clase': 'Clase'})
             
-            # Mostrar st.dataframe con la columna "Contar Asistencia" resaltada
+            # Mostrar st.dataframe con las columnas totalizadoras resaltadas
             st.dataframe(
-                df_pivot_visual.style.map(lambda x: 'background-color: #d4edda; color: #155724; font-weight: bold;', subset=['Contar Asistencia']),
+                df_pivot_visual.style.map(
+                    lambda x: 'background-color: #d4edda; color: #155724; font-weight: bold;', subset=['Contar Asistencia']
+                ).map(
+                    lambda x: 'background-color: #f8d7da; color: #721c24; font-weight: bold;', subset=['Contar Infracción']
+                ).map(
+                    lambda x: 'background-color: #e2e3e5; color: #383d41; font-weight: bold;', subset=['Contar Ausente']
+                ),
                 use_container_width=True
+            )
+
+            # Leyenda explicativa de los estados de asistencia
+            st.markdown(
+                """
+                **Leyenda de Estados:**
+                *   **✅ OK**: Asistió al evento.
+                *   **👻 Fantasma**: Asistió sin votar en WhatsApp.
+                *   **🚨 INFRACCIÓN**: Votó "Sí puedo" pero NO asistió.
+                *   **⚪ Justificado**: Votó "No puedo" y no asistió.
+                *   **🟠 Duda**: Votó "No aseguro" y no asistió.
+                *   **❌ Ausente**: No votó y no asistió.
+                """
             )
 
             # 5. Funcionalidad de Exportación compatible con Excel (BOM utf-8-sig)
