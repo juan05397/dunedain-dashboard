@@ -1,5 +1,6 @@
 import streamlit as st
 import pandas as pd
+import plotly.express as px
 from database import conectar_bd
 
 
@@ -34,29 +35,115 @@ def mostrar():
         col3.metric("IC Promedio", int(
             df_activos['ic'].mean()) if not df_activos.empty else 0)
 
-        # --- SECCIÓN DE GRÁFICOS NATIVOS DE STREAMLIT ---
+        # --- SECCIÓN DE GRÁFICOS INTERACTIVOS (PLOTLY EXPRESS) ---
         if not df_activos.empty:
             with st.expander("📈 Ver Gráficos de Progresión y Fuerza del Clan", expanded=True):
+                # Fila 1: Distribución de Clases (Donut) y Resonancia vs. IC (Dispersión)
                 col_chart1, col_chart2 = st.columns(2)
                 with col_chart1:
-                    st.markdown("<h5 style='text-align: center; color: #a9b0ba;'>👥 Distribución de Clases Activas</h5>", unsafe_allow_html=True)
                     df_clases = df_activos['clase'].value_counts().reset_index()
                     df_clases.columns = ['Clase', 'Cantidad']
                     df_clases = df_clases.sort_values(by='Cantidad', ascending=False)
-                    st.bar_chart(df_clases.set_index('Clase'), y='Cantidad', color='#4DA8DA', height=300, horizontal=True)
+                    
+                    fig_clases = px.pie(
+                        df_clases,
+                        names='Clase',
+                        values='Cantidad',
+                        hole=0.5,
+                        title='👥 Distribución de Clases Activas'
+                    )
+                    fig_clases.update_layout(
+                        margin=dict(l=20, r=20, t=40, b=20),
+                        showlegend=True
+                    )
+                    st.plotly_chart(fig_clases, use_container_width=True)
                 
                 with col_chart2:
-                    st.markdown("<h5 style='text-align: center; color: #a9b0ba;'>💎 Fuerza: Resonancia vs. Índice de Combate (IC)</h5>", unsafe_allow_html=True)
-                    # Gráfico de dispersión para correlacionar estadísticas
-                    st.scatter_chart(df_activos, x='resonancia', y='ic', color='clase', height=300)
+                    # Filtramos jugadores con IC == 0 o nulo para no distorsionar el eje Y
+                    df_scatter = df_activos[(df_activos['ic'] > 0) & (df_activos['ic'].notna())]
+                    
+                    fig_scatter = px.scatter(
+                        df_scatter,
+                        x='resonancia',
+                        y='ic',
+                        color='clase',
+                        hover_data={
+                            'nombre': True,
+                            'clase': True,
+                            'resonancia': ':',
+                            'ic': ':'
+                        },
+                        title='💎 Fuerza: Resonancia vs. Índice de Combate (IC)'
+                    )
+                    fig_scatter.update_layout(
+                        margin=dict(l=20, r=20, t=40, b=20),
+                        xaxis_title='Resonancia',
+                        yaxis_title='Índice de Combate (IC)'
+                    )
+                    st.plotly_chart(fig_scatter, use_container_width=True)
                 
                 st.write("")
-                st.markdown("<h5 style='text-align: center; color: #a9b0ba;'>📊 Resonancia Promedio por Clase</h5>", unsafe_allow_html=True)
-                df_prom_reso = df_activos.groupby('clase')['resonancia'].mean().reset_index()
-                df_prom_reso.columns = ['Clase', 'Resonancia Promedio']
-                df_prom_reso['Resonancia Promedio'] = df_prom_reso['Resonancia Promedio'].fillna(0).astype(int)
-                df_prom_reso = df_prom_reso.sort_values(by='Resonancia Promedio', ascending=False)
-                st.bar_chart(df_prom_reso.set_index('Clase'), y='Resonancia Promedio', color='#f39c12', height=250, horizontal=True)
+                
+                # Fila 2: Resonancia Promedio por Clase (Barras Verticales) y Histograma de Tiers de Resonancia
+                col_chart3, col_chart4 = st.columns(2)
+                with col_chart3:
+                    df_prom_reso = df_activos.groupby('clase')['resonancia'].mean().reset_index()
+                    df_prom_reso.columns = ['Clase', 'Resonancia Promedio']
+                    df_prom_reso['Resonancia Promedio'] = df_prom_reso['Resonancia Promedio'].fillna(0).astype(int)
+                    df_prom_reso = df_prom_reso.sort_values(by='Resonancia Promedio', ascending=False)
+                    
+                    fig_prom_reso = px.bar(
+                        df_prom_reso,
+                        x='Clase',
+                        y='Resonancia Promedio',
+                        color='Resonancia Promedio',
+                        color_continuous_scale='Viridis',
+                        title='📊 Resonancia Promedio por Clase'
+                    )
+                    fig_prom_reso.update_layout(
+                        margin=dict(l=20, r=20, t=40, b=20),
+                        xaxis_title='Clase',
+                        yaxis_title='Resonancia Promedio'
+                    )
+                    st.plotly_chart(fig_prom_reso, use_container_width=True)
+                    
+                with col_chart4:
+                    fig_hist = px.histogram(
+                        df_activos,
+                        x='resonancia',
+                        nbins=12,
+                        title='🎯 Distribución de Jugadores por Tiers de Resonancia',
+                        color_discrete_sequence=['#ff7f0e']
+                    )
+                    fig_hist.update_layout(
+                        margin=dict(l=20, r=20, t=40, b=20),
+                        xaxis_title='Rango de Resonancia',
+                        yaxis_title='Cantidad de Jugadores',
+                        bargap=0.05
+                    )
+                    st.plotly_chart(fig_hist, use_container_width=True)
+                
+                st.write("")
+                st.divider()
+                
+                # Top 10 Jugadores Más Fuertes
+                st.markdown("<h5 style='text-align: center; color: #a9b0ba;'>🏆 Top 10 Jugadores Más Fuertes (Resonancia Activa)</h5>", unsafe_allow_html=True)
+                df_top10 = df_activos.sort_values(by='resonancia', ascending=False).head(10)[['nombre', 'clase', 'resonancia', 'ic']]
+                df_top10.columns = ['Jugador', 'Clase', 'Resonancia', 'IC']
+                df_top10.insert(0, 'Puesto', range(1, len(df_top10) + 1))
+                
+                st.dataframe(
+                    df_top10,
+                    column_config={
+                        "Puesto": st.column_config.NumberColumn("Posición", format="%d"),
+                        "Jugador": "Jugador / Nick",
+                        "Clase": "Clase",
+                        "Resonancia": st.column_config.NumberColumn("Resonancia", format="%d 💎"),
+                        "IC": st.column_config.NumberColumn("IC", format="%d ⚔️")
+                    },
+                    hide_index=True,
+                    use_container_width=True
+                )
 
         st.divider()
 
