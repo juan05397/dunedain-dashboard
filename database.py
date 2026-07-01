@@ -115,3 +115,48 @@ def obtener_ciclo_activo():
     res = cursor.fetchone()
     conn.close()
     return res
+
+
+OPCIONES_TELEFONO = [
+    "🇦🇷 +54",  # Argentina
+    "🇧🇴 +591", # Bolivia
+    "🇧🇷 +55",  # Brasil
+    "🇨🇱 +56",  # Chile
+    "🇨🇴 +57",  # Colombia
+    "🇪🇨 +593", # Ecuador
+    "🇬🇾 +592", # Guyana
+    "🇵🇾 +595", # Paraguay
+    "🇵🇪 +51",  # Perú
+    "🇸🇷 +597", # Surinam
+    "🇺🇾 +598", # Uruguay
+    "🇻🇪 +58"   # Venezuela
+]
+
+
+def parsear_telefono(telefono_str):
+    if not telefono_str:
+        return 0, ""
+    
+    telefono_str = str(telefono_str).strip()
+    
+    # Primero: buscar si comienza exactamente con alguna de las opciones del selectbox
+    for idx, opt in enumerate(OPCIONES_TELEFONO):
+        if telefono_str.startswith(opt):
+            return idx, telefono_str[len(opt):].strip()
+            
+    # Segundo: buscar si comienza con el código numérico directamente (ej. "+51")
+    # Se ordena de mayor a menor longitud de código para evitar colisiones (ej. "+591" antes de "+51")
+    code_mappings = []
+    for idx, opt in enumerate(OPCIONES_TELEFONO):
+        parts = opt.split()
+        if len(parts) >= 2:
+            code_mappings.append((idx, opt, parts[-1]))
+    code_mappings.sort(key=lambda x: len(x[2]), reverse=True)
+    
+    for idx, opt, code in code_mappings:
+        if telefono_str.startswith(code):
+            return idx, telefono_str[len(code):].strip()
+            
+    # Valor por defecto: índice 0 (Argentina) y retornamos el string completo
+    return 0, telefono_str
+

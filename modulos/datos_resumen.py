@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
-from database import conectar_bd
+from database import conectar_bd, OPCIONES_TELEFONO, parsear_telefono
 
 
 def mostrar():
@@ -362,6 +362,14 @@ def mostrar():
                         dur_benef = display_val(row.get('duracion_beneficiosos'))
                         rango_sombra = display_val(row.get('rango_sombra'))
 
+                        # Formatear el teléfono con prefijo y bandera para visualización
+                        tel_db = row.get('telefono')
+                        if pd.notna(tel_db) and str(tel_db).strip() != "":
+                            idx_pref, num_loc = parsear_telefono(tel_db)
+                            telefono_formateado = f"{OPCIONES_TELEFONO[idx_pref]} {num_loc}".strip()
+                        else:
+                            telefono_formateado = "Sin contacto"
+
                         # ==========================================
                         # TARJETA/FICHA PREMIUM (3 COLUMNAS)
                         # ==========================================
@@ -380,7 +388,7 @@ def mostrar():
                                     <p style='margin: 4px 0;'><b>Clase:</b> {row['clase']}</p>
                                     <p style='margin: 4px 0;'><b>Resonancia:</b> {row['resonancia']:,} 💎</p>
                                     <p style='margin: 4px 0;'><b>Índice de Combate (IC):</b> {row['ic']:,} ⚔️</p>
-                                    <p style='margin: 4px 0;'><b>Teléfono:</b> {row['telefono'] if row['telefono'] else 'Sin contacto'}</p>
+                                    <p style='margin: 4px 0;'><b>Teléfono:</b> {telefono_formateado}</p>
                                     <p style='margin: 4px 0;'><b>Canales:</b> {'📱 WhatsApp ' if row['usa_whatsapp'] else ''}{'🎮 Discord' if row['usa_discord'] else ''}</p>
                                     <p style='margin: 4px 0;'><b>Alta:</b> {row['fecha_ingreso']}</p>
                                     <hr style='border-color: #2c3e50; margin: 10px 0;'>

@@ -2,7 +2,7 @@ import streamlit as st
 import sqlite3
 import pandas as pd
 from datetime import date
-from database import conectar_bd
+from database import conectar_bd, OPCIONES_TELEFONO, parsear_telefono
 
 
 def normalizar_clase(nombre_clase, clases_db=None):
@@ -149,8 +149,22 @@ def mostrar():
                         with col_a:
                             reso_nueva = st.number_input(
                                 "Resonancia:", min_value=0, step=50)
-                            telefono_nuevo = st.text_input(
-                                "Teléfono de Contacto:").strip()
+                            st.write("Teléfono de Contacto:")
+                            col_prefijo, col_numero = st.columns([1.2, 3])
+                            with col_prefijo:
+                                prefijo_nuevo = st.selectbox(
+                                    "Prefijo",
+                                    OPCIONES_TELEFONO,
+                                    label_visibility="collapsed",
+                                    key="alta_prefijo"
+                                )
+                            with col_numero:
+                                numero_nuevo = st.text_input(
+                                    "Número local",
+                                    label_visibility="collapsed",
+                                    key="alta_numero"
+                                ).strip()
+                            telefono_nuevo = f"{prefijo_nuevo} {numero_nuevo}".strip() if numero_nuevo else ""
                         with col_b:
                             ic_nuevo = st.number_input(
                                 "Índice de Combate (IC):", min_value=0, step=10)
@@ -275,6 +289,10 @@ def mostrar():
                 clases_permitidas = ["Bárbaro", "Guerrero Divino", "Cazador de Demonios", "Monje", "Nigromante",
                                      "Arcanista", "Caballero Sangriento", "Tempestario", "Druida", "Brujo", "Desconocida"]
 
+            # Parsear teléfono para preselección
+            tel_db = jugador_data['telefono'] if pd.notna(jugador_data['telefono']) else ""
+            idx_prefijo, num_local = parsear_telefono(tel_db)
+
             with st.form("form_modificar"):
                 nombre_mod = st.text_input(
                     "Nombre del Personaje (Nick):", value=str(jugador_data['nombre'])).strip()
@@ -289,8 +307,24 @@ def mostrar():
                 with col_a:
                     reso_mod = st.number_input(
                         "Resonancia:", min_value=0, step=50, value=int(jugador_data['resonancia']))
-                    telefono_mod = st.text_input("Teléfono de Contacto:", value=str(
-                        jugador_data['telefono'] if pd.notna(jugador_data['telefono']) else "")).strip()
+                    st.write("Teléfono de Contacto:")
+                    col_prefijo, col_numero = st.columns([1.2, 3])
+                    with col_prefijo:
+                        prefijo_mod = st.selectbox(
+                            "Prefijo",
+                            OPCIONES_TELEFONO,
+                            index=idx_prefijo,
+                            label_visibility="collapsed",
+                            key="mod_prefijo"
+                        )
+                    with col_numero:
+                        numero_mod = st.text_input(
+                            "Número local",
+                            value=num_local,
+                            label_visibility="collapsed",
+                            key="mod_numero"
+                        ).strip()
+                    telefono_mod = f"{prefijo_mod} {numero_mod}".strip() if numero_mod else ""
                 with col_b:
                     ic_mod = st.number_input(
                         "Índice de Combate (IC):", min_value=0, step=10, value=int(jugador_data['ic']))
