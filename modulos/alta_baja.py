@@ -198,6 +198,7 @@ def mostrar():
                                     conexion_write.close()
                                     st.success(
                                         f"✅ ¡{nombre_nuevo} dado de alta con éxito!")
+                                    st.rerun()
                                 except Exception as e:
                                     st.error(f"Error al guardar: {e}")
 
@@ -217,7 +218,7 @@ def mostrar():
         if not df_activos.empty:
             with st.form("form_baja"):
                 miembro_baja = st.selectbox(
-                    "Seleccionar Miembro:", df_activos['nombre'])
+                    "Seleccionar Miembro:", df_activos['nombre'], key="select_baja_ind")
                 fecha_baja = st.date_input("Fecha de Baja:", date.today())
                 motivo_baja = st.text_area("Motivo de la baja:").strip()
                 es_veto = st.checkbox("🚨 Agregar a Vetados (Definitiva)")
@@ -241,6 +242,7 @@ def mostrar():
                             conexion_write.commit()
                             conexion_write.close()
                             st.success(f"❌ {miembro_baja} dado de baja.")
+                            st.rerun()
                         except Exception as e:
                             st.error(f"Error: {e}")
 
