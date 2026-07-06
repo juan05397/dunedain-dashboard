@@ -8,6 +8,54 @@ from modulos import datos_resumen, alta_baja, asistencia, sanciones, estadistica
 st.set_page_config(page_title="ÐÛΝΞÐΛIN Dashboard",
                    page_icon="🛡️", layout="wide")
 
+# Inyección de Estilos Tematización Diablo
+st.markdown(
+    """
+    <style>
+    @import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@400;700&family=Montserrat:wght@300;400;600&display=swap');
+
+    /* Encabezados y títulos */
+    h1, h2, h3, h4, h5, h6, [data-testid="stHeader"] {
+        font-family: 'Cinzel', serif !important;
+        color: #d4af37 !important; /* Dorado antiguo */
+        text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.9) !important;
+    }
+
+    /* Párrafos, tablas, textos de widgets, labels */
+    p, label, li, span, div, table, td, th, [data-testid="stWidgetLabel"] {
+        font-family: 'Montserrat', sans-serif !important;
+    }
+
+    /* Modificación de st.divider (<hr>) */
+    hr {
+        border: 0 !important;
+        height: 2px !important;
+        background: linear-gradient(to right, rgba(114, 28, 36, 0.1) 0%, rgba(212, 175, 55, 0.8) 50%, rgba(114, 28, 36, 0.1) 100%) !important;
+        margin: 20px 0 !important;
+    }
+
+    /* Clase divisor-diablo manual */
+    .divisor-diablo {
+        height: 2px;
+        background: linear-gradient(to right, rgba(114, 28, 36, 0.1) 0%, rgba(212, 175, 55, 0.8) 50%, rgba(114, 28, 36, 0.1) 100%);
+        margin: 15px 0;
+    }
+
+    /* Clase card-diablo */
+    .card-diablo {
+        background-color: #121418 !important;
+        border: 1px solid #721c24 !important;
+        border-radius: 8px;
+        box-shadow: 0 0 10px rgba(114, 28, 36, 0.4);
+        padding: 15px;
+        margin-bottom: 15px;
+        color: #f5f5f5;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True
+)
+
 # Inicializamos el control de sesiones en la memoria del navegador
 if 'logeado' not in st.session_state:
     st.session_state['logeado'] = False
@@ -26,9 +74,15 @@ def pantalla_login():
         st.write("")
         st.write("")
         try:
-            st.image("logo.jpg", use_container_width=True)
+            import os
+            if os.path.exists("assets/logo.png"):
+                st.image("assets/logo.png", use_container_width=True)
+            elif os.path.exists("logo.jpg"):
+                st.image("logo.jpg", use_container_width=True)
+            else:
+                st.markdown("<h2 style='text-align: center; color: #d4af37;'>Alex Clan Urquiza</h2><h4 style='text-align: center; color: #a9b0ba;'>Centro de Comando</h4>", unsafe_allow_html=True)
         except:
-            pass
+            st.markdown("<h2 style='text-align: center; color: #d4af37;'>Alex Clan Urquiza</h2>", unsafe_allow_html=True)
 
         st.markdown(
             "<h2 style='text-align: center; color: #a9b0ba;'>Acceso Restringido</h2>", unsafe_allow_html=True)
@@ -116,9 +170,15 @@ elif st.session_state['debe_cambiar']:
 else:
     # Sidebar dinámico
     try:
-        st.sidebar.image("logo.jpg", use_container_width=True)
+        import os
+        if os.path.exists("assets/logo.png"):
+            st.sidebar.image("assets/logo.png", use_container_width=True)
+        elif os.path.exists("logo.jpg"):
+            st.sidebar.image("logo.jpg", use_container_width=True)
+        else:
+            st.sidebar.markdown("<h3 style='text-align: center; color: #d4af37;'>Alex Clan Urquiza<br><span style='font-size: 0.8em; color: #a9b0ba;'>Centro de Comando</span></h3>", unsafe_allow_html=True)
     except:
-        pass
+        st.sidebar.markdown("<h3 style='text-align: center; color: #d4af37;'>Alex Clan Urquiza</h3>", unsafe_allow_html=True)
 
     st.sidebar.title(f"Bienvenido,\n🛡️ {st.session_state['usuario']}")
 
