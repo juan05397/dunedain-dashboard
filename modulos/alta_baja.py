@@ -485,11 +485,11 @@ def mostrar():
 
                                 # Consultar existencia en base de datos
                                 cursor.execute(
-                                    "SELECT id, estado FROM miembros WHERE LOWER(nombre) = LOWER(?)", (nom,))
+                                    "SELECT id, estado, resonancia, ic, telefono FROM miembros WHERE LOWER(nombre) = LOWER(?)", (nom,))
                                 bd_data = cursor.fetchone()
 
                                 if bd_data:
-                                    id_jugador, estado_actual = bd_data[0], bd_data[1]
+                                    id_jugador, estado_actual, reso_bd, ic_bd, tel_bd = bd_data[0], bd_data[1], bd_data[2], bd_data[3], bd_data[4]
 
                                     # Verificar veto definitivo antes de cualquier acción
                                     cursor.execute(
@@ -497,13 +497,22 @@ def mostrar():
                                     if cursor.fetchone():
                                         lista_bloqueados.append(nom)
                                     else:
+                                        # Lógica de fallback para evitar pérdida de datos
+                                        reso_bd_val = reso_bd if (reso_bd is not None) else 0
+                                        ic_bd_val = ic_bd if (ic_bd is not None) else 0
+                                        tel_bd_val = str(tel_bd).strip() if (tel_bd is not None) else ""
+
+                                        reso_final = res if res > 0 else reso_bd_val
+                                        ic_final = ic if ic > 0 else ic_bd_val
+                                        tel_final = tel if tel != "" else tel_bd_val
+
                                         if estado_actual != 'Activo':
                                             # Reactivar y actualizar estadísticas completas
                                             cursor.execute('''
                                                 UPDATE miembros 
                                                 SET estado='Activo', fecha_ingreso=?, fecha_baja=NULL, clase=?, resonancia=?, ic=?, telefono=?, usa_discord=?, usa_whatsapp=?, alta_realizada_por=? 
                                                 WHERE id=?
-                                            ''', (hoy, cla, res, ic, tel, disc, wa, usuario_actual, id_jugador))
+                                            ''', (hoy, cla, reso_final, ic_final, tel_final, disc, wa, usuario_actual, id_jugador))
                                             lista_reingresos.append(nom)
                                         else:
                                             # Actualizar estadísticas manteniendo la antigüedad
@@ -511,7 +520,7 @@ def mostrar():
                                                 UPDATE miembros 
                                                 SET clase=?, resonancia=?, ic=?, telefono=?, usa_discord=?, usa_whatsapp=? 
                                                 WHERE id=?
-                                            ''', (cla, res, ic, tel, disc, wa, id_jugador))
+                                            ''', (cla, reso_final, ic_final, tel_final, disc, wa, id_jugador))
                                             lista_actualizados.append(nom)
                                 else:
                                     # Insertar miembro completamente nuevo
