@@ -14,11 +14,25 @@ st.markdown(
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@400;700&family=Montserrat:wght@300;400;600&display=swap');
 
-    /* Encabezados y títulos */
+    /* Fuente base para encabezados */
     h1, h2, h3, h4, h5, h6, [data-testid="stHeader"] {
         font-family: 'Cinzel', serif !important;
-        color: #d4af37 !important; /* Dorado antiguo */
-        text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.9) !important;
+    }
+
+    /* MODO CLARO (Fondo blanco/claro) */
+    @media (prefers-color-scheme: light) {
+        h1, h2, h3, h4, h5, h6, [data-testid="stHeader"] {
+            color: #353839 !important; /* Gris carbón oscuro */
+            text-shadow: none !important; /* Sin brillo para máxima legibilidad */
+        }
+    }
+
+    /* MODO OSCURO (Fondo oscuro/negro) */
+    @media (prefers-color-scheme: dark) {
+        h1, h2, h3, h4, h5, h6, [data-testid="stHeader"] {
+            color: #353839 !important; /* Gris carbón oscuro */
+            text-shadow: 0px 0px 8px rgba(255, 255, 255, 0.7) !important; /* Brillo blanco intenso detrás para contraste */
+        }
     }
 
     /* Párrafos, tablas, textos de widgets, labels */
@@ -191,6 +205,16 @@ else:
         st.sidebar.markdown("<h3 style='text-align: center; color: #d4af37;'>Alex Clan Urquiza</h3>", unsafe_allow_html=True)
 
     st.sidebar.title(f"Bienvenido,\n🛡️ {st.session_state['usuario']}")
+
+    st.sidebar.markdown("<hr class='divisor-diablo'>", unsafe_allow_html=True)
+    try:
+        st.sidebar.image("Diablo Inmortal.png", use_container_width=True)
+    except FileNotFoundError:
+        try:
+            st.sidebar.image("Diablo Inmortal.jpg", use_container_width=True)
+        except Exception:
+            pass
+    st.sidebar.markdown("<hr class='divisor-diablo'>", unsafe_allow_html=True)
 
     # Aquí está la lista con la coma corregida y el Armador incluido
     opciones_menu = [
