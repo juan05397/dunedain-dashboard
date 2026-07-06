@@ -22,8 +22,18 @@ st.markdown(
     }
 
     /* Párrafos, tablas, textos de widgets, labels */
-    p, label, li, span, div, table, td, th, [data-testid="stWidgetLabel"] {
-        font-family: 'Montserrat', sans-serif !important;
+    p, label, li, table, td, th, [data-testid="stWidgetLabel"] {
+        font-family: 'Montserrat', sans-serif;
+    }
+
+    span, div {
+        font-family: 'Montserrat', sans-serif;
+    }
+
+    /* Excepción para iconos */
+    .material-icons, .st-icon, svg, [class^="st-icon-"], .st-expander-arrow, .st-expander-arrow span {
+        font-family: 'Material Icons' !important;
+        font-size: inherit;
     }
 
     /* Modificación de st.divider (<hr>) */
