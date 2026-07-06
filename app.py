@@ -30,7 +30,7 @@ st.markdown(
     /* MODO OSCURO (Fondo oscuro/negro) */
     @media (prefers-color-scheme: dark) {
         h1, h2, h3, h4, h5, h6, [data-testid="stHeader"] {
-            color: #e0e0e0 !important; /* Gris claro para máxima legibilidad */
+            color: #353232 !important; /* Gris claro para máxima legibilidad */
             text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.9) !important; /* Sombra oscura para contraste */
         }
     }
@@ -104,9 +104,11 @@ def pantalla_login():
             elif os.path.exists("logo.jpg"):
                 st.image("logo.jpg", use_container_width=True)
             else:
-                st.markdown("<h2 style='text-align: center; color: #d4af37;'>Nombre del Clan</h2><h4 style='text-align: center; color: #a9b0ba;'>Centro de Comando</h4>", unsafe_allow_html=True)
+                st.markdown(
+                    "<h2 style='text-align: center; color: #d4af37;'>Nombre del Clan</h2><h4 style='text-align: center; color: #a9b0ba;'>Centro de Comando</h4>", unsafe_allow_html=True)
         except:
-            st.markdown("<h2 style='text-align: center; color: #d4af37;'>Nombre del Clan</h2>", unsafe_allow_html=True)
+            st.markdown(
+                "<h2 style='text-align: center; color: #d4af37;'>Nombre del Clan</h2>", unsafe_allow_html=True)
 
         st.markdown(
             "<h2 style='text-align: center; color: #a9b0ba;'>Acceso Restringido</h2>", unsafe_allow_html=True)
@@ -200,9 +202,11 @@ else:
         elif os.path.exists("logo.jpg"):
             st.sidebar.image("logo.jpg", use_container_width=True)
         else:
-            st.sidebar.markdown("<h3 style='text-align: center; color: #d4af37;'>Nombre del Clan<br><span style='font-size: 0.8em; color: #a9b0ba;'>Centro de Comando</span></h3>", unsafe_allow_html=True)
+            st.sidebar.markdown(
+                "<h3 style='text-align: center; color: #d4af37;'>Nombre del Clan<br><span style='font-size: 0.8em; color: #a9b0ba;'>Centro de Comando</span></h3>", unsafe_allow_html=True)
     except:
-        st.sidebar.markdown("<h3 style='text-align: center; color: #d4af37;'>Nombre del Clan</h3>", unsafe_allow_html=True)
+        st.sidebar.markdown(
+            "<h3 style='text-align: center; color: #d4af37;'>Nombre del Clan</h3>", unsafe_allow_html=True)
 
     st.sidebar.title(f"Bienvenido,\n🛡️ {st.session_state['usuario']}")
 
