@@ -44,80 +44,86 @@ def conectar_bd():
 
 
 def preparar_db():
-    conn = conectar_bd()
-    cursor = conn.cursor()
-    
-    # 1. Crear esquemas de todas las tablas al principio
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS ciclos_inmortales (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            fecha_desde TEXT NOT NULL,
-            fecha_hasta TEXT,
-            estado TEXT CHECK(estado IN ('Activo', 'Finalizado')) NOT NULL DEFAULT 'Activo'
-        )
-    ''')
-    
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS clases (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            nombre TEXT UNIQUE
-        )
-    ''')
-    
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS alias_whatsapp (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            whatsapp_name TEXT UNIQUE,
-            miembro_id INTEGER,
-            FOREIGN KEY (miembro_id) REFERENCES miembros(id) ON DELETE CASCADE
-        )
-    ''')
-    
+    # 1. Crear esquemas de todas las tablas
+    try:
+        conn = conectar_bd()
+        cursor = conn.cursor()
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS ciclos_inmortales (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                fecha_desde TEXT NOT NULL,
+                fecha_hasta TEXT,
+                estado TEXT CHECK(estado IN ('Activo', 'Finalizado')) NOT NULL DEFAULT 'Activo'
+            )
+        ''')
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS clases (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                nombre TEXT UNIQUE
+            )
+        ''')
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS alias_whatsapp (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                whatsapp_name TEXT UNIQUE,
+                miembro_id INTEGER,
+                FOREIGN KEY (miembro_id) REFERENCES miembros(id) ON DELETE CASCADE
+            )
+        ''')
+        conn.commit()
+        conn.close()
+    except Exception:
+        pass
+        
     # 2. Modificaciones de columnas en miembros (ALTER TABLE)
     try:
+        conn = conectar_bd()
+        cursor = conn.cursor()
         cursor.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='miembros'")
         miembros_exists = cursor.fetchone() is not None
-    except Exception:
-        miembros_exists = False
-
-    if miembros_exists:
-        try:
+        if miembros_exists:
             cursor.execute("SELECT * FROM miembros LIMIT 0")
             columnas_existentes = {col[0].lower() for col in cursor.description}
-        except Exception:
-            columnas_existentes = set()
-
-        columnas_nuevas = [
-            ("alta_realizada_por", "TEXT"),
-            ("baja_realizada_por", "TEXT"),
-            ("motivo_baja", "TEXT"),
-            ("armadura", "INTEGER"),
-            ("penetracion_armadura", "INTEGER"),
-            ("potencia", "INTEGER"),
-            ("resistencia", "INTEGER"),
-            ("velocidad_ataque", "TEXT"),
-            ("reduccion_recuperacion", "TEXT"),
-            ("duracion_beneficiosos", "TEXT"),
-            ("rango_sombra", "TEXT")
-        ]
-        for col_name, col_type in columnas_nuevas:
-            if col_name.lower() not in columnas_existentes:
-                try:
-                    cursor.execute(f"ALTER TABLE miembros ADD COLUMN {col_name} {col_type}")
-                except Exception:
-                    pass
             
-    # 3. Inicialización de datos por defecto (después de crear tablas)
-    cursor.execute("SELECT COUNT(*) FROM clases")
-    if cursor.fetchone()[0] == 0:
-        clases_defecto = [
-            "Bárbaro", "Guerrero Divino", "Cazador de Demonios", "Monje", "Nigromante",
-            "Arcanista", "Caballero Sangriento", "Tempestario", "Druida", "Brujo", "Desconocida"
-        ]
-        cursor.executemany("INSERT INTO clases (nombre) VALUES (?)", [(c,) for c in clases_defecto])
+            columnas_nuevas = [
+                ("alta_realizada_por", "TEXT"),
+                ("baja_realizada_por", "TEXT"),
+                ("motivo_baja", "TEXT"),
+                ("armadura", "INTEGER"),
+                ("penetracion_armadura", "INTEGER"),
+                ("potencia", "INTEGER"),
+                ("resistencia", "INTEGER"),
+                ("velocidad_ataque", "TEXT"),
+                ("reduccion_recuperacion", "TEXT"),
+                ("duracion_beneficiosos", "TEXT"),
+                ("rango_sombra", "TEXT")
+            ]
+            for col_name, col_type in columnas_nuevas:
+                if col_name.lower() not in columnas_existentes:
+                    try:
+                        cursor.execute(f"ALTER TABLE miembros ADD COLUMN {col_name} {col_type}")
+                    except Exception:
+                        pass
+        conn.commit()
+        conn.close()
+    except Exception:
+        pass
         
-    conn.commit()
-    conn.close()
+    # 3. Inicialización de datos por defecto (después de crear tablas)
+    try:
+        conn = conectar_bd()
+        cursor = conn.cursor()
+        cursor.execute("SELECT COUNT(*) FROM clases")
+        if cursor.fetchone()[0] == 0:
+            clases_defecto = [
+                "Bárbaro", "Guerrero Divino", "Cazador de Demonios", "Monje", "Nigromante",
+                "Arcanista", "Caballero Sangriento", "Tempestario", "Druida", "Brujo", "Desconocida"
+            ]
+            cursor.executemany("INSERT INTO clases (nombre) VALUES (?)", [(c,) for c in clases_defecto])
+        conn.commit()
+        conn.close()
+    except Exception:
+        pass
 
 
 # Inicializar base de datos
