@@ -75,30 +75,37 @@ def preparar_db():
     
     # 2. Modificaciones de columnas en miembros (ALTER TABLE)
     try:
-        cursor.execute("SELECT * FROM miembros LIMIT 0")
-        columnas_existentes = {col[0].lower() for col in cursor.description}
+        cursor.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='miembros'")
+        miembros_exists = cursor.fetchone() is not None
     except Exception:
-        columnas_existentes = set()
+        miembros_exists = False
 
-    columnas_nuevas = [
-        ("alta_realizada_por", "TEXT"),
-        ("baja_realizada_por", "TEXT"),
-        ("motivo_baja", "TEXT"),
-        ("armadura", "INTEGER"),
-        ("penetracion_armadura", "INTEGER"),
-        ("potencia", "INTEGER"),
-        ("resistencia", "INTEGER"),
-        ("velocidad_ataque", "TEXT"),
-        ("reduccion_recuperacion", "TEXT"),
-        ("duracion_beneficiosos", "TEXT"),
-        ("rango_sombra", "TEXT")
-    ]
-    for col_name, col_type in columnas_nuevas:
-        if col_name.lower() not in columnas_existentes:
-            try:
-                cursor.execute(f"ALTER TABLE miembros ADD COLUMN {col_name} {col_type}")
-            except Exception:
-                pass
+    if miembros_exists:
+        try:
+            cursor.execute("SELECT * FROM miembros LIMIT 0")
+            columnas_existentes = {col[0].lower() for col in cursor.description}
+        except Exception:
+            columnas_existentes = set()
+
+        columnas_nuevas = [
+            ("alta_realizada_por", "TEXT"),
+            ("baja_realizada_por", "TEXT"),
+            ("motivo_baja", "TEXT"),
+            ("armadura", "INTEGER"),
+            ("penetracion_armadura", "INTEGER"),
+            ("potencia", "INTEGER"),
+            ("resistencia", "INTEGER"),
+            ("velocidad_ataque", "TEXT"),
+            ("reduccion_recuperacion", "TEXT"),
+            ("duracion_beneficiosos", "TEXT"),
+            ("rango_sombra", "TEXT")
+        ]
+        for col_name, col_type in columnas_nuevas:
+            if col_name.lower() not in columnas_existentes:
+                try:
+                    cursor.execute(f"ALTER TABLE miembros ADD COLUMN {col_name} {col_type}")
+                except Exception:
+                    pass
             
     # 3. Inicialización de datos por defecto (después de crear tablas)
     cursor.execute("SELECT COUNT(*) FROM clases")
