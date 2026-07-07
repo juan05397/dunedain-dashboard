@@ -74,8 +74,11 @@ def preparar_db():
     ''')
     
     # 2. Modificaciones de columnas en miembros (ALTER TABLE)
-    cursor.execute("PRAGMA table_info(miembros)")
-    columnas_existentes = {col[1].lower() for col in cursor.fetchall()}
+    try:
+        cursor.execute("SELECT * FROM miembros LIMIT 0")
+        columnas_existentes = {col[0].lower() for col in cursor.description}
+    except Exception:
+        columnas_existentes = set()
 
     columnas_nuevas = [
         ("alta_realizada_por", "TEXT"),
