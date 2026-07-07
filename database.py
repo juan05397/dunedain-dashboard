@@ -46,6 +46,8 @@ def conectar_bd():
 def preparar_db():
     conn = conectar_bd()
     cursor = conn.cursor()
+    
+    # 1. Crear esquemas de todas las tablas al principio
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS ciclos_inmortales (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -55,7 +57,26 @@ def preparar_db():
         )
     ''')
     
-    # Columnas nuevas de gestión, auditoría e histórica de PvP
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS clases (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            nombre TEXT UNIQUE
+        )
+    ''')
+    
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS alias_whatsapp (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            whatsapp_name TEXT UNIQUE,
+            miembro_id INTEGER,
+            FOREIGN KEY (miembro_id) REFERENCES miembros(id) ON DELETE CASCADE
+        )
+    ''')
+    
+    # 2. Modificaciones de columnas en miembros (ALTER TABLE)
+    cursor.execute("PRAGMA table_info(miembros)")
+    columnas_existentes = {col[1].lower() for col in cursor.fetchall()}
+
     columnas_nuevas = [
         ("alta_realizada_por", "TEXT"),
         ("baja_realizada_por", "TEXT"),
@@ -70,18 +91,13 @@ def preparar_db():
         ("rango_sombra", "TEXT")
     ]
     for col_name, col_type in columnas_nuevas:
-        try:
-            cursor.execute(f"ALTER TABLE miembros ADD COLUMN {col_name} {col_type}")
-        except Exception:
-            pass
+        if col_name.lower() not in columnas_existentes:
+            try:
+                cursor.execute(f"ALTER TABLE miembros ADD COLUMN {col_name} {col_type}")
+            except Exception:
+                pass
             
-    # Crear e inicializar la tabla de clases
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS clases (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            nombre TEXT UNIQUE
-        )
-    ''')
+    # 3. Inicialización de datos por defecto (después de crear tablas)
     cursor.execute("SELECT COUNT(*) FROM clases")
     if cursor.fetchone()[0] == 0:
         clases_defecto = [
@@ -90,16 +106,6 @@ def preparar_db():
         ]
         cursor.executemany("INSERT INTO clases (nombre) VALUES (?)", [(c,) for c in clases_defecto])
         
-    # Crear la tabla de alias de WhatsApp
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS alias_whatsapp (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            whatsapp_name TEXT UNIQUE,
-            miembro_id INTEGER,
-            FOREIGN KEY (miembro_id) REFERENCES miembros(id) ON DELETE CASCADE
-        )
-    ''')
-            
     conn.commit()
     conn.close()
 
