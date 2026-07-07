@@ -23,8 +23,8 @@ def mostrar():
         if not df_activos.empty:
             df_activos.insert(0, '#', range(1, len(df_activos) + 1))
             
-            # Extraer el prefijo (texto antes del primer espacio). Si está vacío o nulo, queda como cadena vacía.
-            df_activos['Prefijo'] = df_activos['telefono'].fillna('').astype(str).apply(lambda x: x.split(' ')[0] if x.strip() else '')
+            # Extraer estrictamente el prefijo numérico (+ seguido de dígitos) ignorando banderas o espacios
+            df_activos['Prefijo'] = df_activos['telefono'].fillna('').astype(str).str.extract(r'(\+\d+)', expand=False).fillna('')
             
             # Diccionario de indicativos a países
             mapeo_paises = {
