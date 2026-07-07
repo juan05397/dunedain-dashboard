@@ -100,9 +100,9 @@ def pantalla_login():
         try:
             import os
             if os.path.exists("assets/logo.png"):
-                st.image("assets/logo.png", use_container_width=True)
+                st.image("assets/logo.png", width="stretch")
             elif os.path.exists("logo.jpg"):
-                st.image("logo.jpg", use_container_width=True)
+                st.image("logo.jpg", width="stretch")
             else:
                 st.markdown(
                     "<h2 style='text-align: center; color: #d4af37;'>Nombre del Clan</h2><h4 style='text-align: center; color: #a9b0ba;'>Centro de Comando</h4>", unsafe_allow_html=True)
@@ -117,7 +117,7 @@ def pantalla_login():
             user = st.text_input("Usuario", placeholder="Nick del jugador")
             password = st.text_input("Contraseña", type="password")
             submit = st.form_submit_button(
-                "Entrar a la Base de Datos", use_container_width=True)
+                "Entrar a la Base de Datos", width="stretch")
 
             if submit:
                 if not user or not password:
@@ -142,7 +142,7 @@ def pantalla_login():
                             st.error(
                                 "❌ Credenciales incorrectas o acceso denegado.")
                     except Exception as e:
-                        st.error("Fallo de conexión a la base de datos.")
+                        st.error(f"Fallo de conexión a la base de datos. Detalle técnico: {e}")
 
 # ==========================================
 # PANTALLA OBLIGATORIA DE CAMBIO DE CONTRASEÑA
@@ -198,9 +198,9 @@ else:
     try:
         import os
         if os.path.exists("assets/logo.png"):
-            st.sidebar.image("assets/logo.png", use_container_width=True)
+            st.sidebar.image("assets/logo.png", width="stretch")
         elif os.path.exists("logo.jpg"):
-            st.sidebar.image("logo.jpg", use_container_width=True)
+            st.sidebar.image("logo.jpg", width="stretch")
         else:
             st.sidebar.markdown(
                 "<h3 style='text-align: center; color: #d4af37;'>Nombre del Clan<br><span style='font-size: 0.8em; color: #a9b0ba;'>Centro de Comando</span></h3>", unsafe_allow_html=True)
@@ -212,10 +212,10 @@ else:
 
     st.sidebar.markdown("<hr class='divisor-diablo'>", unsafe_allow_html=True)
     try:
-        st.sidebar.image("Diablo Inmortal.png", use_container_width=True)
+        st.sidebar.image("Diablo Inmortal.png", width="stretch")
     except FileNotFoundError:
         try:
-            st.sidebar.image("Diablo Inmortal.jpg", use_container_width=True)
+            st.sidebar.image("Diablo Inmortal.jpg", width="stretch")
         except Exception:
             pass
 
