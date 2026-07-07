@@ -230,9 +230,25 @@ def mostrar():
                         conexion_save = conectar_bd()
                         cursor_save = conexion_save.cursor()
                         
+                        # Paso A: Precálculo de Inasistencias en Bloque
+                        cursor_save.execute(
+                            "SELECT miembro_id, COUNT(*) FROM asistencia WHERE ciclo = ? AND asistio_realmente = 0 AND (evento_id != ? OR fecha != ?) GROUP BY miembro_id",
+                            (ciclo, int(evento_id), str(fecha_evento))
+                        )
+                        dict_inasistencias = {row[0]: row[1] for row in cursor_save.fetchall()}
+
+                        # Paso B: Precálculo de Registros Existentes
+                        cursor_save.execute(
+                            "SELECT miembro_id, id FROM asistencia WHERE evento_id = ? AND ciclo = ? AND fecha = ?",
+                            (int(evento_id), ciclo, str(fecha_evento))
+                        )
+                        dict_existentes = {row[0]: row[1] for row in cursor_save.fetchall()}
+
                         warnings_list = []
+                        datos_insert = []
+                        datos_update = []
                         
-                        # 2. Iterar y persistir cambios con UPSERT en asistencia
+                        # Paso C: Preparación en Memoria
                         for index, row in df_editado.iterrows():
                             miembro_id = int(row['miembro_id'])
                             jugador = row['Nombre']
@@ -247,36 +263,33 @@ def mostrar():
                             
                             # Si no asistió, verificar cuántas inasistencias acumuladas posee en el ciclo activo
                             if not asistencia_ui:
-                                cursor_save.execute(
-                                    "SELECT COUNT(*) FROM asistencia WHERE miembro_id = ? AND ciclo = ? AND asistio_realmente = 0 AND (evento_id != ? OR fecha != ?)",
-                                    (miembro_id, ciclo, int(evento_id), str(fecha_evento))
-                                )
-                                inasistencias_previas = cursor_save.fetchone()[0]
+                                inasistencias_previas = dict_inasistencias.get(miembro_id, 0)
                                 total_inasistencias = inasistencias_previas + 1
                                 if total_inasistencias >= 3:
                                     warnings_list.append(f"⚠️ **{jugador}** acumula **{total_inasistencias}** inasistencias en el ciclo activo.")
                             
-                            # Realizar UPSERT en la tabla asistencia
-                            cursor_save.execute(
-                                "SELECT id FROM asistencia WHERE miembro_id=? AND evento_id=? AND ciclo=? AND fecha=?",
-                                (miembro_id, int(evento_id), ciclo, str(fecha_evento))
-                            )
-                            registro = cursor_save.fetchone()
-                            
-                            if registro:
-                                cursor_save.execute(
-                                    """UPDATE asistencia 
-                                       SET intencion=?, sala_asignada=?, asistio_realmente=? 
-                                       WHERE id=?""",
-                                    (intencion_db, sala_db, asistio_realmente_db, registro[0])
-                                )
+                            # Clasificar registro
+                            id_asistencia = dict_existentes.get(miembro_id)
+                            if id_asistencia is not None:
+                                datos_update.append((intencion_db, sala_db, asistio_realmente_db, id_asistencia))
                             else:
-                                cursor_save.execute(
-                                    """INSERT INTO asistencia 
-                                       (miembro_id, evento_id, ciclo, fecha, estado_asistencia, intencion, sala_asignada, asistio_realmente) 
-                                       VALUES (?, ?, ?, ?, 'Procesado', ?, ?, ?)""",
-                                    (miembro_id, int(evento_id), ciclo, str(fecha_evento), intencion_db, sala_db, asistio_realmente_db)
-                                )
+                                datos_insert.append((miembro_id, int(evento_id), ciclo, str(fecha_evento), intencion_db, sala_db, asistio_realmente_db))
+                        
+                        # Paso D: Ejecución Bulk
+                        if datos_update:
+                            cursor_save.executemany(
+                                """UPDATE asistencia 
+                                   SET intencion=?, sala_asignada=?, asistio_realmente=? 
+                                   WHERE id=?""",
+                                datos_update
+                            )
+                        if datos_insert:
+                            cursor_save.executemany(
+                                """INSERT INTO asistencia 
+                                   (miembro_id, evento_id, ciclo, fecha, estado_asistencia, intencion, sala_asignada, asistio_realmente) 
+                                   VALUES (?, ?, ?, ?, 'Procesado', ?, ?, ?)""",
+                                datos_insert
+                            )
                         
                         conexion_save.commit()
                         conexion_save.close()

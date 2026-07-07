@@ -11,7 +11,7 @@ def mostrar():
 
         # 1. Consultar Activos (Omitimos traer el 'id' de la BD)
         df_activos = pd.read_sql_query(
-            "SELECT nombre, clase, resonancia, ic, estado, alta_realizada_por, ex_clan FROM miembros WHERE estado='Activo' ORDER BY nombre", conexion)
+            "SELECT nombre, clase, resonancia, ic, telefono, estado, alta_realizada_por, ex_clan FROM miembros WHERE estado='Activo' ORDER BY nombre", conexion)
 
         # 2. Consultar Inactivos/Expulsados (Agregamos la fecha de baja para que sea útil)
         df_inactivos = pd.read_sql_query(
@@ -22,6 +22,29 @@ def mostrar():
         # Generar numeración consecutiva (Posición del 1 en adelante)
         if not df_activos.empty:
             df_activos.insert(0, '#', range(1, len(df_activos) + 1))
+            
+            # Extraer el prefijo (texto antes del primer espacio). Si está vacío o nulo, queda como cadena vacía.
+            df_activos['Prefijo'] = df_activos['telefono'].fillna('').astype(str).apply(lambda x: x.split(' ')[0] if x.strip() else '')
+            
+            # Diccionario de indicativos a países
+            mapeo_paises = {
+                '+54': 'Argentina',
+                '+58': 'Venezuela',
+                '+51': 'Perú',
+                '+56': 'Chile',
+                '+57': 'Colombia',
+                '+52': 'México',
+                '+591': 'Bolivia',
+                '+598': 'Uruguay',
+                '+593': 'Ecuador',
+                '+595': 'Paraguay',
+                '+34': 'España',
+                '+1': 'USA/Canadá'
+            }
+            
+            # Asignar país y manejar los que no tienen teléfono
+            df_activos['País'] = df_activos['Prefijo'].map(mapeo_paises).fillna('Otros')
+            df_activos.loc[df_activos['Prefijo'] == '', 'País'] = 'Sin teléfono'
 
         if not df_inactivos.empty:
             df_inactivos.insert(0, '#', range(1, len(df_inactivos) + 1))
@@ -124,6 +147,32 @@ def mostrar():
                     st.plotly_chart(fig_hist, use_container_width=True)
                 
                 st.write("")
+                col_chart5, col_chart6 = st.columns(2)
+
+                with col_chart5:
+                    df_paises = df_activos['País'].value_counts().reset_index()
+                    df_paises.columns = ['País', 'Cantidad']
+
+                    fig_paises = px.pie(
+                        df_paises,
+                        names='País',
+                        values='Cantidad',
+                        hole=0.5,
+                        title='🌎 Distribución Geográfica (Por Prefijo)',
+                        color='País',
+                        color_discrete_map={'Sin teléfono': '#7f8c8d'} # Gris neutro para valores nulos
+                    )
+                    fig_paises.update_layout(
+                        margin=dict(l=20, r=20, t=40, b=20),
+                        showlegend=True
+                    )
+                    st.plotly_chart(fig_paises, use_container_width=True)
+
+                with col_chart6:
+                    # Espacio reservado para futuras métricas
+                    st.write("")
+                
+                st.write("")
                 st.divider()
                 
                 # Top 10 Jugadores Más Fuertes
@@ -163,7 +212,10 @@ def mostrar():
                 'alta_realizada_por': 'Alta realizada por',
                 'ex_clan': 'Ex Clan'
             })
-            st.dataframe(df_activos_visual, use_container_width=True, hide_index=True)
+            # Asegurar que solo se muestran las columnas deseadas
+            columnas_mostrar = ['#', 'Nombre', 'Clase', 'Resonancia', 'IC', 'Estado', 'Alta realizada por', 'Ex Clan']
+            columnas_existentes_visual = [c for c in columnas_mostrar if c in df_activos_visual.columns]
+            st.dataframe(df_activos_visual[columnas_existentes_visual], use_container_width=True, hide_index=True)
 
         with tab_inactivos:
             st.markdown("**Historial de jugadores retirados o vetados**")
