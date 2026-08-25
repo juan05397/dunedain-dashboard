@@ -7,6 +7,7 @@ import sys
 import plotly.express as px
 from datetime import date
 from database import conectar_bd, obtener_ciclo_activo
+from modulos.armador_salas import normalizar_sala_db
 
 def preparar_bd():
     """Actualiza las tablas agregando las nuevas columnas si no existen."""
@@ -143,7 +144,7 @@ def mostrar():
         if not df_miembros.empty:
             # Mapear valores de base de datos a UI
             df_miembros["Intención de Voto"] = df_miembros["intencion"].map(db_to_ui_intencion).fillna("NO VOTO")
-            df_miembros["Sala de Guerra"] = df_miembros["sala_asignada"].fillna("No asignado")
+            df_miembros["Sala de Guerra"] = df_miembros["sala_asignada"].apply(lambda x: normalizar_sala_db(x) if pd.notna(x) and x else "No asignado")
             df_miembros["Asistencia Real"] = df_miembros["asistio_realmente"].apply(lambda x: True if x == 1 else False)
 
             # Dropear columnas temporales de BD
@@ -172,10 +173,11 @@ def mostrar():
                     "Sala de Guerra": st.column_config.SelectboxColumn(
                         "Sala de Guerra",
                         options=[
-                            "No asignado", "Sala 1 (8 Pts)", "Sala 2 (8 Pts)", "Sala 3 (8 Pts)",
-                            "Sala 1 (4 Pts)", "Sala 2 (4 Pts)", "Sala 3 (4 Pts)",
-                            "Sala 1 (2 Pts)", "Sala 2 (2 Pts)", "Sala 3 (2 Pts)",
-                            "Sala 1 (1 Pt)", "Sala 2 (1 Pt)", "Sala 3 (1 Pt)"
+                            "No asignado",
+                            "1 (SUBLIME)", "2 (SUBLIME)", "3 (SUBLIME)",
+                            "1 (EMINENTE)", "2 (EMINENTE)", "3 (EMINENTE)",
+                            "1 (CELEBRE)", "2 (CELEBRE)", "3 (CELEBRE)",
+                            "1 (IMPONENTE)", "2 (IMPONENTE)", "3 (IMPONENTE)"
                         ],
                         required=True
                     ),

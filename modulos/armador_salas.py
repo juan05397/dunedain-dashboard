@@ -6,20 +6,23 @@ from database import conectar_bd
 
 
 def normalizar_sala_db(sala_db):
-    if not sala_db:
-        return ""
-    # Remover espacios en los extremos
+    if not sala_db: return ""
     s = sala_db.strip()
-    if s.lower() == "no asignado":
-        return "No asignado"
-    
-    # Buscar patrones como "sala 1 (8 pts)" o "sala 2 (1 pt)"
-    match = re.search(r'sala\s*(\d+)\s*\(\s*(\d+)\s*(?:pts|pt|puntos|punto)?\s*\)', s, re.IGNORECASE)
-    if match:
-        num_sala = match.group(1)
-        puntos = match.group(2)
-        return f"Sala {num_sala} ({puntos} Pts)"
-        
+    if s.lower() == "no asignado": return "No asignado"
+
+    # Detectar formato antiguo: "Sala 1 (8 pts)" y mapearlo al nuevo
+    mapeo_puntos = {"8": "SUBLIME", "4": "EMINENTE", "2": "CELEBRE", "1": "IMPONENTE"}
+    import re
+    match_old = re.search(r'sala\s*(\d+)\s*\(\s*(\d+)\s*(?:pts|pt|puntos|punto)?\s*\)', s, re.IGNORECASE)
+    if match_old:
+        num, pts = match_old.group(1), match_old.group(2)
+        return f"{num} ({mapeo_puntos.get(pts, 'SUBLIME')})"
+
+    # Detectar formato nuevo: "1 (SUBLIME)"
+    match_new = re.search(r'(\d+)\s*\((SUBLIME|EMINENTE|CELEBRE|IMPONENTE)\)', s, re.IGNORECASE)
+    if match_new:
+        return f"{match_new.group(1)} ({match_new.group(2).upper()})"
+
     return s
 
 
@@ -30,10 +33,10 @@ def mostrar():
 
     # 1. Estructura de salas para control de estado
     estructura_salas = [
-        {"puntos": 8, "cantidad": 3},
-        {"puntos": 4, "cantidad": 3},
-        {"puntos": 2, "cantidad": 3},
-        {"puntos": 1, "cantidad": 3}
+        {"puntos": 8, "cantidad": 3, "nombre": "SUBLIME"},
+        {"puntos": 4, "cantidad": 3, "nombre": "EMINENTE"},
+        {"puntos": 2, "cantidad": 3, "nombre": "CELEBRE"},
+        {"puntos": 1, "cantidad": 3, "nombre": "IMPONENTE"}
     ]
 
     # 2. Control de estado y limpieza al cambiar de evento
@@ -45,9 +48,8 @@ def mostrar():
         if evento_actual != st.session_state['ultimo_evento_seleccionado']:
             # Limpiar todas las claves de las salas de st.session_state
             for categoria in estructura_salas:
-                pts = categoria["puntos"]
                 for i in range(categoria["cantidad"]):
-                    nombre_sala = f"Sala {i+1} ({pts} Pts)"
+                    nombre_sala = f"{i+1} ({categoria['nombre']})"
                     if nombre_sala in st.session_state:
                         del st.session_state[nombre_sala]
             
@@ -167,9 +169,8 @@ def mostrar():
         if last_db_hash != current_db_hash:
             # Borrar de session_state las claves de las salas para obligar a tomar los nuevos defaults de la BD
             for categoria in estructura_salas:
-                pts = categoria["puntos"]
                 for i in range(categoria["cantidad"]):
-                    nombre_sala = f"Sala {i+1} ({pts} Pts)"
+                    nombre_sala = f"{i+1} ({categoria['nombre']})"
                     if nombre_sala in st.session_state:
                         del st.session_state[nombre_sala]
             
@@ -192,13 +193,12 @@ def mostrar():
     # CONSTRUCTOR DE LA INTERFAZ ESTILO EXCEL
     # ==========================================
     for categoria in estructura_salas:
-        pts = categoria["puntos"]
-        st.markdown(f"### 🏆 Salas de {pts} Puntos")
+        st.markdown(f"### 🏆 {categoria['nombre']}")
 
         cols = st.columns(3)
 
         for i in range(categoria["cantidad"]):
-            nombre_sala = f"Sala {i+1} ({pts} Pts)"
+            nombre_sala = f"{i+1} ({categoria['nombre']})"
 
             with cols[i]:
                 st.markdown(
@@ -283,11 +283,10 @@ def mostrar():
     texto_whatsapp += "⚔️ ASIGNACIÓN DE SALAS - GUERRA SOMBRÍA ⚔️\n\n"
 
     for categoria in estructura_salas:
-        pts = categoria["puntos"]
         cantidad = categoria["cantidad"]
 
-        # CORRECCIÓN: Buscamos las salas exactamente con su nombre original (con minúsculas)
-        nombres_salas = [f"Sala {i+1} ({pts} Pts)" for i in range(cantidad)]
+        # CORRECCIÓN: Buscamos las salas exactamente con su nombre original
+        nombres_salas = [f"{i+1} ({categoria['nombre']})" for i in range(cantidad)]
 
         if any(len(selecciones_globales[sala]) > 0 for sala in nombres_salas):
 
