@@ -89,6 +89,7 @@ def mostrar():
 
     evento_id = None
     distribucion_salas = {}
+    habilidades_jugadores = {}
     fecha_mas_reciente = None
 
     if not df_eventos.empty:
@@ -138,7 +139,7 @@ def mostrar():
             
             if fecha_mas_reciente:
                 query_dist = """
-                    SELECT m.nombre, a.sala_asignada 
+                    SELECT m.nombre, a.sala_asignada, a.habilidad 
                     FROM asistencia a
                     JOIN miembros m ON a.miembro_id = m.id
                     WHERE a.evento_id = ? AND a.fecha = ? AND m.estado = 'Activo'
@@ -155,6 +156,10 @@ def mostrar():
                                 if sala_norm not in distribucion_salas:
                                     distribucion_salas[sala_norm] = []
                                 distribucion_salas[sala_norm].append(nombre_raw)
+
+                        habilidad_raw = row['habilidad'] if 'habilidad' in row and pd.notna(row['habilidad']) and row['habilidad'] != 'Seleccione' else "ROCA"
+                        habilidad_limpia = habilidad_raw.split(" ", 1)[1] if " " in str(habilidad_raw) else str(habilidad_raw)
+                        habilidades_jugadores[nombre_raw] = habilidad_limpia.upper()
             conexion_as.close()
         except Exception as e:
             st.error(f"Error al cargar la última asignación de salas: {e}")
@@ -292,8 +297,22 @@ def mostrar():
                         for jugador in jugadores_sala:
                             st.markdown(f"**Para el jugador: {jugador}**")
                             
+                            habilidad_asignada = habilidades_jugadores.get(jugador, "ROCA")
+                            
                             # Plantilla del mensaje
-                            mensaje = f"¡Buenos días familia!\n\nLes recuerdo que hoy tenemos guerra a las 19:30 horas server. No olviden tomar sus bendiciones minutos antes que empiece la guerra.\n\nNecesitamos de tu apoyo en:\n\nSALA {cat_nombre} {num_sala}\nHABILIDAD ROCA\n\n¡Muchas gracias a todos por su compromiso y apoyo!\n\n¡Vamos con toda por la victoria! 💪🔥\n\nAtte Admin. RΛGИΛЯØK"
+                            mensaje = (
+                                f"Hola *{jugador}* 👋\n\n"
+                                f"Te recuerdo que *hoy tenemos Guerra a las 19:30 hs. server* ⚔️🔥\n\n"
+                                f"Contamos especialmente con tu apoyo en:\n\n"
+                                f"🏛️ *SALA {cat_nombre} {num_sala}*\n"
+                                f"🪨 *HABILIDAD {habilidad_asignada}*\n\n"
+                                f"No olvides tomar tus *bendiciones unos minutos antes de que comience la guerra*. 🙏\n\n"
+                                f"Tu participación es muy importante para el equipo y necesitamos que estés preparado para cumplir con esta función. 💪\n\n"
+                                f"¡Muchas gracias por tu compromiso y por darlo todo por el clan! ❤️🔥\n\n"
+                                f"*¡Vamos con toda por la victoria! 🏆🔥*\n\n"
+                                f"Atte.\n"
+                                f"*Admin. RΛGИΛЯØK*"
+                            )
                             
                             st.code(mensaje, language="text")
     else:

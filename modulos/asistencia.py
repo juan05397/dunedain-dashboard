@@ -29,6 +29,11 @@ def preparar_bd():
         cursor.execute("ALTER TABLE asistencia ADD COLUMN sala_asignada TEXT DEFAULT 'No asignado'")
     except Exception:
         pass
+
+    try:
+        cursor.execute("ALTER TABLE asistencia ADD COLUMN habilidad TEXT DEFAULT 'Seleccione'")
+    except Exception:
+        pass
         
     # Agregar columnas a la tabla estadisticas_guerra
     try:
@@ -129,6 +134,7 @@ def mostrar():
                     m.resonancia AS Resonancia,
                     a.intencion,
                     a.sala_asignada,
+                    a.habilidad,
                     a.asistio_realmente
                 FROM miembros m
                 LEFT JOIN asistencia a ON m.id = a.miembro_id AND a.evento_id = ? AND a.fecha = ?
@@ -145,16 +151,34 @@ def mostrar():
             # Mapear valores de base de datos a UI
             df_miembros["Intención de Voto"] = df_miembros["intencion"].map(db_to_ui_intencion).fillna("NO VOTO")
             df_miembros["Sala de Guerra"] = df_miembros["sala_asignada"].apply(lambda x: normalizar_sala_db(x) if pd.notna(x) and x else "No asignado")
+            df_miembros["Habilidad"] = df_miembros["habilidad"].fillna("Seleccione")
             df_miembros["Asistencia Real"] = df_miembros["asistio_realmente"].apply(lambda x: True if x == 1 else False)
 
             # Dropear columnas temporales de BD
-            df_miembros = df_miembros.drop(columns=["intencion", "sala_asignada", "asistio_realmente"])
+            df_miembros = df_miembros.drop(columns=["intencion", "sala_asignada", "habilidad", "asistio_realmente"])
 
             # Asegurar el orden de las columnas para st.data_editor
-            df_miembros = df_miembros[["miembro_id", "Nombre", "Clase", "Resonancia", "Intención de Voto", "Sala de Guerra", "Asistencia Real"]]
+            df_miembros = df_miembros[["miembro_id", "Nombre", "Clase", "Resonancia", "Intención de Voto", "Sala de Guerra", "Habilidad", "Asistencia Real"]]
             
             # Ajustar la numeración de los registros iniciando desde 1 y agregar la columna "Num Activo"
             df_miembros.insert(0, "Num Activo", range(1, len(df_miembros) + 1))
+
+            # Leyenda Visual de Imágenes
+            with st.expander("📖 Guía Visual de Habilidades de Guerra"):
+                st.markdown("Utiliza esta referencia para seleccionar el emoji correcto en la tabla.")
+                c1, c2, c3, c4 = st.columns(4)
+                with c1:
+                    st.image("Imag Guerra/Arma de Asedio.png", caption="🏹 Arma de Asedio", use_container_width=True)
+                    st.image("Imag Guerra/Llamada del Guardian.png", caption="🗿 Llamada del Guardián", use_container_width=True)
+                with c2:
+                    st.image("Imag Guerra/Bendicion de Impulso.png", caption="💨 Bendición de Impulso", use_container_width=True)
+                    st.image("Imag Guerra/Macumba de Roca.png", caption="🪨 Macumba de Roca", use_container_width=True)
+                with c3:
+                    st.image("Imag Guerra/Escudo de la Justicia.png", caption="🛡️ Escudo de la Justicia", use_container_width=True)
+                    st.image("Imag Guerra/Marca de la Angustia.png", caption="👁️ Marca de la Angustia", use_container_width=True)
+                with c4:
+                    st.image("Imag Guerra/Fulgor del Verdugo.png", caption="☄️ Fulgor del Verdugo", use_container_width=True)
+                    st.image("Imag Guerra/Oscuridad Menguada.png", caption="🌑 Oscuridad Menguada", use_container_width=True)
 
             # Mostrar st.data_editor configurado
             df_editado = st.data_editor(
@@ -178,6 +202,16 @@ def mostrar():
                             "1 (EMINENTE)", "2 (EMINENTE)", "3 (EMINENTE)",
                             "1 (CELEBRE)", "2 (CELEBRE)", "3 (CELEBRE)",
                             "1 (IMPONENTE)", "2 (IMPONENTE)", "3 (IMPONENTE)"
+                        ],
+                        required=True
+                    ),
+                    "Habilidad": st.column_config.SelectboxColumn(
+                        "Habilidad",
+                        options=[
+                            "Seleccione",
+                            "🏹 Arma de Asedio", "💨 Bendición de Impulso", "🛡️ Escudo de la Justicia", 
+                            "☄️ Fulgor del Verdugo", "🗿 Llamada del Guardián", "🪨 Macumba de Roca", 
+                            "👁️ Marca de la Angustia", "🌑 Oscuridad Menguada"
                         ],
                         required=True
                     ),
@@ -225,8 +259,13 @@ def mostrar():
                     if count > 8:
                         exceeded_rooms.append(f"**{room}** (tiene {count} jugadores asignados, máximo 8)")
 
+                # 2. Validación de Habilidad: obligatoria si tiene Sala asignada
+                missing_skills = df_editado[(df_editado["Sala de Guerra"] != "No asignado") & (df_editado["Habilidad"] == "Seleccione")]["Nombre"].tolist()
+
                 if exceeded_rooms:
                     st.error("🚫 **El guardado se ha bloqueado porque las siguientes salas superan el límite de 8 jugadores:**\n\n" + "\n".join([f"- {r}" for r in exceeded_rooms]))
+                elif missing_skills:
+                    st.error("🚫 Guardado bloqueado: Los siguientes jugadores tienen Sala asignada pero falta su Habilidad:\n" + ", ".join(missing_skills))
                 else:
                     try:
                         conexion_save = conectar_bd()
@@ -256,11 +295,13 @@ def mostrar():
                             jugador = row['Nombre']
                             intencion_ui = row['Intención de Voto']
                             sala_ui = row['Sala de Guerra']
+                            habilidad_ui = row['Habilidad']
                             asistencia_ui = row['Asistencia Real']
                             
                             # Mapear de regreso a formato de base de datos
                             intencion_db = ui_to_db_intencion.get(intencion_ui, 'No votó')
                             sala_db = sala_ui
+                            habilidad_db = habilidad_ui
                             asistio_realmente_db = 1 if asistencia_ui else 0
                             
                             # Si no asistió, verificar cuántas inasistencias acumuladas posee en el ciclo activo
@@ -273,23 +314,23 @@ def mostrar():
                             # Clasificar registro
                             id_asistencia = dict_existentes.get(miembro_id)
                             if id_asistencia is not None:
-                                datos_update.append((intencion_db, sala_db, asistio_realmente_db, id_asistencia))
+                                datos_update.append((intencion_db, sala_db, habilidad_db, asistio_realmente_db, id_asistencia))
                             else:
-                                datos_insert.append((miembro_id, int(evento_id), ciclo, str(fecha_evento), intencion_db, sala_db, asistio_realmente_db))
+                                datos_insert.append((miembro_id, int(evento_id), ciclo, str(fecha_evento), intencion_db, sala_db, habilidad_db, asistio_realmente_db))
                         
                         # Paso D: Ejecución Bulk
                         if datos_update:
                             cursor_save.executemany(
                                 """UPDATE asistencia 
-                                   SET intencion=?, sala_asignada=?, asistio_realmente=? 
+                                   SET intencion=?, sala_asignada=?, habilidad=?, asistio_realmente=? 
                                    WHERE id=?""",
                                 datos_update
                             )
                         if datos_insert:
                             cursor_save.executemany(
                                 """INSERT INTO asistencia 
-                                   (miembro_id, evento_id, ciclo, fecha, estado_asistencia, intencion, sala_asignada, asistio_realmente) 
-                                   VALUES (?, ?, ?, ?, 'Procesado', ?, ?, ?)""",
+                                   (miembro_id, evento_id, ciclo, fecha, estado_asistencia, intencion, sala_asignada, habilidad, asistio_realmente) 
+                                   VALUES (?, ?, ?, ?, 'Procesado', ?, ?, ?, ?)""",
                                 datos_insert
                             )
                         
