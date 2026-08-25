@@ -6,8 +6,26 @@ import os
 import sys
 import plotly.express as px
 from datetime import date
+from PIL import Image
 from database import conectar_bd, obtener_ciclo_activo
 from modulos.armador_salas import normalizar_sala_db
+
+def cargar_imagen(nombre_archivo):
+    """Carga de forma segura imágenes locales utilizando PIL para evitar problemas de codificación de rutas."""
+    base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    ruta_abs = os.path.join(base_dir, "Imag Guerra", nombre_archivo)
+    if os.path.exists(ruta_abs):
+        try:
+            return Image.open(ruta_abs)
+        except Exception:
+            return ruta_abs
+    ruta_rel = os.path.join("Imag Guerra", nombre_archivo)
+    if os.path.exists(ruta_rel):
+        try:
+            return Image.open(ruta_rel)
+        except Exception:
+            return ruta_rel
+    return None
 
 def preparar_bd():
     """Actualiza las tablas agregando las nuevas columnas si no existen."""
@@ -164,21 +182,29 @@ def mostrar():
             df_miembros.insert(0, "Num Activo", range(1, len(df_miembros) + 1))
 
             # Leyenda Visual de Imágenes
-            with st.expander("📖 Guía Visual de Habilidades de Guerra"):
+            with st.expander("📖 Guía Visual de Habilidades de Guerra", expanded=True):
                 st.markdown("Utiliza esta referencia para seleccionar el emoji correcto en la tabla.")
                 c1, c2, c3, c4 = st.columns(4)
                 with c1:
-                    st.image("Imag Guerra/Arma de Asedio.png", caption="🏹 Arma de Asedio", use_container_width=True)
-                    st.image("Imag Guerra/Llamada del Guardian.png", caption="🗿 Llamada del Guardián", use_container_width=True)
+                    img_asedio = cargar_imagen("Arma de Asedio.png")
+                    if img_asedio: st.image(img_asedio, caption="🏹 Arma de Asedio", use_container_width=True)
+                    img_guardian = cargar_imagen("Llamada del Guardian.png")
+                    if img_guardian: st.image(img_guardian, caption="🗿 Llamada del Guardián", use_container_width=True)
                 with c2:
-                    st.image("Imag Guerra/Bendicion de Impulso.png", caption="💨 Bendición de Impulso", use_container_width=True)
-                    st.image("Imag Guerra/Macumba de Roca.png", caption="🪨 Macumba de Roca", use_container_width=True)
+                    img_impulso = cargar_imagen("Bendicion de Impulso.png")
+                    if img_impulso: st.image(img_impulso, caption="💨 Bendición de Impulso", use_container_width=True)
+                    img_roca = cargar_imagen("Macumba de Roca.png")
+                    if img_roca: st.image(img_roca, caption="🪨 Macumba de Roca", use_container_width=True)
                 with c3:
-                    st.image("Imag Guerra/Escudo de la Justicia.png", caption="🛡️ Escudo de la Justicia", use_container_width=True)
-                    st.image("Imag Guerra/Marca de la Angustia.png", caption="👁️ Marca de la Angustia", use_container_width=True)
+                    img_escudo = cargar_imagen("Escudo de la Justicia.png")
+                    if img_escudo: st.image(img_escudo, caption="🛡️ Escudo de la Justicia", use_container_width=True)
+                    img_angustia = cargar_imagen("Marca de la Angustia.png")
+                    if img_angustia: st.image(img_angustia, caption="👁️ Marca de la Angustia", use_container_width=True)
                 with c4:
-                    st.image("Imag Guerra/Fulgor del Verdugo.png", caption="☄️ Fulgor del Verdugo", use_container_width=True)
-                    st.image("Imag Guerra/Oscuridad Menguada.png", caption="🌑 Oscuridad Menguada", use_container_width=True)
+                    img_verdugo = cargar_imagen("Fulgor del Verdugo.png")
+                    if img_verdugo: st.image(img_verdugo, caption="☄️ Fulgor del Verdugo", use_container_width=True)
+                    img_oscuridad = cargar_imagen("Oscuridad Menguada.png")
+                    if img_oscuridad: st.image(img_oscuridad, caption="🌑 Oscuridad Menguada", use_container_width=True)
 
             # Mostrar st.data_editor configurado
             df_editado = st.data_editor(
