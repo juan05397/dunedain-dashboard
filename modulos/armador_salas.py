@@ -276,52 +276,25 @@ def mostrar():
         st.error(
             f"⚠️ ¡Atención! Has asignado a los siguientes jugadores en más de una sala: **{', '.join(duplicados)}**")
 
-    st.subheader("📱 Formato para WhatsApp / Discord")
-    st.info("💡 Haz clic en el **ícono de copiar** en la esquina superior derecha del recuadro negro. Al pegarlo en WhatsApp o Discord, mantendrá el formato de columnas exacto.")
-
-    texto_whatsapp = "```\n"
-    texto_whatsapp += "⚔️ ASIGNACIÓN DE SALAS - GUERRA SOMBRÍA ⚔️\n\n"
-
-    for categoria in estructura_salas:
-        cantidad = categoria["cantidad"]
-
-        # CORRECCIÓN: Buscamos las salas exactamente con su nombre original
-        nombres_salas = [f"{i+1} ({categoria['nombre']})" for i in range(cantidad)]
-
-        if any(len(selecciones_globales[sala]) > 0 for sala in nombres_salas):
-
-            # Para imprimir en mayúsculas sin romper la búsqueda, usamos .upper() aquí
-            encabezados = [sala.upper().ljust(22) for sala in nombres_salas]
-            texto_whatsapp += "".join(encabezados) + "\n"
-            texto_whatsapp += "-" * 62 + "\n"
-
-            for i in range(8):
-                fila_vacia = True
-                fila_texto = ""
-
-                for x, sala in enumerate(nombres_salas):
-                    lista_jugadores = selecciones_globales[sala]
-
-                    if i < len(lista_jugadores):
-                        nombre = lista_jugadores[i]
-                        fila_vacia = False
-                    else:
-                        nombre = ""
-
-                    if x < 2:
-                        fila_texto += nombre.ljust(22)
-                    else:
-                        fila_texto += nombre
-
-                if not fila_vacia:
-                    texto_whatsapp += fila_texto.rstrip() + "\n"
-
-            texto_whatsapp += "\n"
-
-    texto_whatsapp += "```"
+    st.subheader("📱 Mensajes Individuales para WhatsApp / Discord")
+    st.info("💡 Despliega la sala correspondiente para copiar el mensaje individual de cada jugador.")
 
     if len(todos_seleccionados) > 0:
-        st.code(texto_whatsapp, language="text")
+        for categoria in estructura_salas:
+            cat_nombre = categoria["nombre"]
+            for i in range(categoria["cantidad"]):
+                num_sala = i + 1
+                nombre_sala_key = f"{num_sala} ({cat_nombre})"
+                jugadores_sala = selecciones_globales.get(nombre_sala_key, [])
+                
+                if jugadores_sala:
+                    with st.expander(f"Mensajes para SALA {cat_nombre} {num_sala} ({len(jugadores_sala)} jugadores)"):
+                        for jugador in jugadores_sala:
+                            st.markdown(f"**Para el jugador: {jugador}**")
+                            
+                            # Plantilla del mensaje
+                            mensaje = f"¡Buenos días familia!\n\nLes recuerdo que hoy tenemos guerra a las 19:30 horas server. No olviden tomar sus bendiciones minutos antes que empiece la guerra.\n\nNecesitamos de tu apoyo en:\n\nSALA {cat_nombre} {num_sala}\nHABILIDAD ROCA\n\n¡Muchas gracias a todos por su compromiso y apoyo!\n\n¡Vamos con toda por la victoria! 💪🔥\n\nAtte Admin. RΛGИΛЯØK"
+                            
+                            st.code(mensaje, language="text")
     else:
-        st.info(
-            "Comienza a asignar jugadores en la parte superior para generar el texto de forma automática.")
+        st.info("Comienza a asignar jugadores en la parte superior para generar los mensajes de forma automática.")
