@@ -108,17 +108,20 @@ def mostrar():
                     indice_defecto = idx
                     break
             else:
-                # Si no coincide con el día de la semana, seleccionar el último evento registrado
-                indice_defecto = len(df_eventos) - 1
+                # Si no coincide con el día de la semana, seleccionar el primer evento (ej. Guerra de Sombras Jueves)
+                indice_defecto = 0
         except Exception:
-            indice_defecto = len(df_eventos) - 1
+            indice_defecto = 0
 
-        evento_seleccionado = st.selectbox(
-            "Seleccionar Evento para Precargar Salas:",
-            options=df_eventos['nombre'],
-            index=indice_defecto,
-            key='selector_evento_armador'
-        )
+        col_sel1, col_sel2 = st.columns([2, 1])
+
+        with col_sel1:
+            evento_seleccionado = st.selectbox(
+                "Seleccionar Evento para Precargar Salas:",
+                options=df_eventos['nombre'],
+                index=indice_defecto,
+                key='selector_evento_armador'
+            )
         
         # Sincronizar el primer valor al iniciar
         if st.session_state['ultimo_evento_seleccionado'] is None:
@@ -126,25 +129,42 @@ def mostrar():
             
         evento_id = df_eventos[df_eventos['nombre'] == evento_seleccionado]['id'].values[0]
         
+        # Obtener todas las fechas registradas para este evento
+        fechas_registradas = []
         try:
             conexion_as = conectar_bd()
             cursor_as = conexion_as.cursor()
             cursor_as.execute(
-                "SELECT MAX(fecha) FROM asistencia WHERE evento_id = ?",
+                "SELECT DISTINCT fecha FROM asistencia WHERE evento_id = ? ORDER BY fecha DESC",
                 (int(evento_id),)
             )
-            row_fecha = cursor_as.fetchone()
-            if row_fecha and row_fecha[0] is not None:
-                fecha_mas_reciente = row_fecha[0]
-            
-            if fecha_mas_reciente:
+            fechas_registradas = [r[0] for r in cursor_as.fetchall() if r[0] is not None]
+            conexion_as.close()
+        except Exception as e:
+            st.error(f"Error al obtener fechas del evento: {e}")
+
+        with col_sel2:
+            if fechas_registradas:
+                fecha_seleccionada = st.selectbox(
+                    "Fecha Registrada:",
+                    options=fechas_registradas,
+                    index=0,
+                    key='selector_fecha_armador'
+                )
+            else:
+                st.selectbox("Fecha Registrada:", options=["Sin registros"], disabled=True)
+                fecha_seleccionada = None
+
+        if fecha_seleccionada:
+            try:
+                conexion_as = conectar_bd()
                 query_dist = """
                     SELECT m.nombre, a.sala_asignada, a.habilidad 
                     FROM asistencia a
                     JOIN miembros m ON a.miembro_id = m.id
                     WHERE a.evento_id = ? AND a.fecha = ? AND m.estado = 'Activo'
                 """
-                df_dist = pd.read_sql_query(query_dist, conexion_as, params=(int(evento_id), str(fecha_mas_reciente)))
+                df_dist = pd.read_sql_query(query_dist, conexion_as, params=(int(evento_id), str(fecha_seleccionada)))
                 
                 if not df_dist.empty:
                     for _, row in df_dist.iterrows():
@@ -160,14 +180,14 @@ def mostrar():
                         habilidad_raw = row['habilidad'] if 'habilidad' in row and pd.notna(row['habilidad']) and row['habilidad'] != 'Seleccione' else "ROCA"
                         habilidad_limpia = habilidad_raw.split(" ", 1)[1] if " " in str(habilidad_raw) else str(habilidad_raw)
                         habilidades_jugadores[nombre_raw] = habilidad_limpia.upper()
-            conexion_as.close()
-        except Exception as e:
-            st.error(f"Error al cargar la última asignación de salas: {e}")
+                conexion_as.close()
+            except Exception as e:
+                st.error(f"Error al cargar la asignación de salas: {e}")
 
         # --- AUTO-SINCRONIZACIÓN DE CACHÉ (INVALIDACIÓN DE MEMORIA) ---
-        # Ordenamos los nombres de los jugadores y de las salas para que la representación en cadena sea determinista
+        # Incluimos evento_id y fecha_seleccionada en el hash para que cualquier cambio invalide el estado
         distribucion_estable = {s: sorted(players) for s, players in distribucion_salas.items()}
-        current_db_hash = str(sorted(distribucion_estable.items()))
+        current_db_hash = f"{evento_id}_{fecha_seleccionada}_{sorted(distribucion_estable.items())}"
         
         last_db_hash = st.session_state.get('last_db_hash_armador')
         
@@ -184,12 +204,23 @@ def mostrar():
             st.rerun()
 
         # Mensajes de estado sobre la precarga
-        if fecha_mas_reciente and distribucion_salas:
-            st.info(f"💡 Se ha precargado la última distribución del evento registrada el **{fecha_mas_reciente}**.")
-        elif fecha_mas_reciente:
-            st.info(f"ℹ️ No hay una distribución de salas guardada para este evento en la fecha registrada ({fecha_mas_reciente}).")
-        else:
-            st.info("ℹ️ No hay una distribución de salas guardada para este evento en esta fecha.")
+        col_info, col_btn = st.columns([3, 1])
+        with col_info:
+            if fecha_seleccionada and distribucion_salas:
+                st.info(f"💡 Se ha precargado la distribución del evento para el **{fecha_seleccionada}**.")
+            elif fecha_seleccionada:
+                st.info(f"ℹ️ No hay jugadores con salas asignadas para el evento en la fecha **{fecha_seleccionada}**.")
+            else:
+                st.info("ℹ️ No hay registros de asistencia para este evento.")
+        with col_btn:
+            if st.button("🔄 Recargar Asignaciones", use_container_width=True):
+                for categoria in estructura_salas:
+                    for i in range(categoria["cantidad"]):
+                        nombre_sala = f"{i+1} ({categoria['nombre']})"
+                        if nombre_sala in st.session_state:
+                            del st.session_state[nombre_sala]
+                st.session_state['last_db_hash_armador'] = None
+                st.rerun()
 
     selecciones_globales = {}
     todos_seleccionados = []
