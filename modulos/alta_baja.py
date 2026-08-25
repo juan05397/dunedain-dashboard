@@ -317,14 +317,14 @@ def mostrar():
                             OPCIONES_TELEFONO,
                             index=idx_prefijo,
                             label_visibility="collapsed",
-                            key="mod_prefijo"
+                            key=f"mod_prefijo_{jugador_data['id']}"
                         )
                     with col_numero:
                         numero_mod = st.text_input(
                             "Número local",
                             value=num_local,
                             label_visibility="collapsed",
-                            key="mod_numero"
+                            key=f"mod_numero_{jugador_data['id']}"
                         ).strip()
                     telefono_mod = f"{prefijo_mod} {numero_mod}".strip() if numero_mod else ""
                 with col_b:
