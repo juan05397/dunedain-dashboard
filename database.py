@@ -140,18 +140,21 @@ def obtener_ciclo_activo():
 
 
 OPCIONES_TELEFONO = [
-    "🇦🇷 +54",  # Argentina
-    "🇧🇴 +591", # Bolivia
-    "🇧🇷 +55",  # Brasil
-    "🇨🇱 +56",  # Chile
-    "🇨🇴 +57",  # Colombia
-    "🇪🇨 +593", # Ecuador
-    "🇬🇾 +592", # Guyana
-    "🇵🇾 +595", # Paraguay
-    "🇵🇪 +51",  # Perú
-    "🇸🇷 +597", # Surinam
-    "🇺🇾 +598", # Uruguay
-    "🇻🇪 +58"   # Venezuela
+    "🇦🇷 +54",   # Argentina
+    "🇧🇴 +591",  # Bolivia
+    "🇧🇷 +55",   # Brasil
+    "🇨🇱 +56",   # Chile
+    "🇨🇴 +57",   # Colombia
+    "🇪🇨 +593",  # Ecuador
+    "🇪🇸 +34",   # España
+    "🇬🇾 +592",  # Guyana
+    "🇲🇽 +52",   # México
+    "🇵🇾 +595",  # Paraguay
+    "🇵🇪 +51",   # Perú
+    "🇵🇹 +351",  # Portugal
+    "🇸🇷 +597",  # Surinam
+    "🇺🇾 +598",  # Uruguay
+    "🇻🇪 +58"    # Venezuela
 ]
 
 

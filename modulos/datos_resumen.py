@@ -39,6 +39,7 @@ def mostrar():
                 '+593': 'Ecuador',
                 '+595': 'Paraguay',
                 '+34': 'España',
+                '+351': 'Portugal',
                 '+1': 'USA/Canadá'
             }
             
