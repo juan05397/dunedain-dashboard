@@ -316,6 +316,8 @@ def mostrar():
     st.info("💡 Despliega la sala correspondiente para copiar el mensaje individual de cada jugador.")
 
     if len(todos_seleccionados) > 0:
+        contenido_descarga = "⚔️ MENSAJES DE GUERRA SOMBRÍA ⚔️\n" + "="*50 + "\n\n"
+
         for categoria in estructura_salas:
             cat_nombre = categoria["nombre"]
             for i in range(categoria["cantidad"]):
@@ -346,5 +348,26 @@ def mostrar():
                             )
                             
                             st.code(mensaje, language="text")
+
+                            contenido_descarga += f"--- Copiar mensaje de: {jugador} ---\n"
+                            contenido_descarga += mensaje + "\n\n" + "="*50 + "\n\n"
+
+        st.divider()
+        st.download_button(
+            label="📥 Descarga Listado",
+            data=contenido_descarga,
+            file_name=f"Mensajes_Guerra_{datetime.date.today()}.txt",
+            mime="text/plain",
+            disabled=len(todos_seleccionados) == 0,
+            use_container_width=True
+        )
     else:
         st.info("Comienza a asignar jugadores en la parte superior para generar los mensajes de forma automática.")
+        st.divider()
+        st.download_button(
+            label="📥 Descarga Listado",
+            data="",
+            file_name="vacio.txt",
+            disabled=True,
+            use_container_width=True
+        )
