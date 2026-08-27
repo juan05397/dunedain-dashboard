@@ -312,6 +312,35 @@ def mostrar():
         st.error(
             f"⚠️ ¡Atención! Has asignado a los siguientes jugadores en más de una sala: **{', '.join(duplicados)}**")
 
+    st.subheader("📋 Resumen General de Salas")
+    st.info("💡 Copia este bloque para compartir el listado completo y general de las salas armadas.")
+
+    if len(todos_seleccionados) > 0:
+        resumen_texto = "⚔️ DISTRIBUCIÓN DE SALAS ⚔️\n\n"
+        
+        for categoria in estructura_salas:
+            cat_nombre = categoria["nombre"]
+            for i in range(categoria["cantidad"]):
+                num_sala = i + 1
+                nombre_sala_key = f"{num_sala} ({cat_nombre})"
+                jugadores_sala = selecciones_globales.get(nombre_sala_key, [])
+                
+                # Solo incluimos la sala si tiene al menos un jugador asignado
+                if jugadores_sala:
+                    resumen_texto += f"🏛️ SALA {cat_nombre} {num_sala}\n"
+                    
+                    # Imprimir siempre 8 posiciones
+                    for j in range(8):
+                        if j < len(jugadores_sala):
+                            resumen_texto += f"{j+1}. {jugadores_sala[j]}\n"
+                        else:
+                            resumen_texto += f"{j+1}. ---\n"
+                    
+                    resumen_texto += "\n"  # Espacio visual entre salas
+        
+        st.code(resumen_texto.strip(), language="text")
+        st.divider()
+
     st.subheader("📱 Mensajes Individuales para WhatsApp / Discord")
     st.info("💡 Despliega la sala correspondiente para copiar el mensaje individual de cada jugador.")
 
