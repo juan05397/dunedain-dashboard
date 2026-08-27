@@ -108,8 +108,55 @@ def preparar_db():
         conn.close()
     except Exception:
         pass
+
+    # 3. Modificaciones de columnas en asistencia
+    try:
+        conn = conectar_bd()
+        cursor = conn.cursor()
+        cursor.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='asistencia'")
+        if cursor.fetchone() is not None:
+            cursor.execute("SELECT * FROM asistencia LIMIT 0")
+            columnas_existentes = {col[0].lower() for col in cursor.description}
+            columnas_asistencia = [
+                ("asistio_realmente", "INTEGER DEFAULT 0"),
+                ("sala_asignada", "TEXT DEFAULT 'No asignado'"),
+                ("habilidad", "TEXT DEFAULT 'Seleccione'")
+            ]
+            for col_name, col_type in columnas_asistencia:
+                if col_name.lower() not in columnas_existentes:
+                    try:
+                        cursor.execute(f"ALTER TABLE asistencia ADD COLUMN {col_name} {col_type}")
+                    except Exception:
+                        pass
+        conn.commit()
+        conn.close()
+    except Exception:
+        pass
+
+    # 4. Modificaciones de columnas en estadisticas_guerra
+    try:
+        conn = conectar_bd()
+        cursor = conn.cursor()
+        cursor.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='estadisticas_guerra'")
+        if cursor.fetchone() is not None:
+            cursor.execute("SELECT * FROM estadisticas_guerra LIMIT 0")
+            columnas_existentes = {col[0].lower() for col in cursor.description}
+            columnas_stats = [
+                ("evento_id", "INTEGER"),
+                ("fecha", "DATE")
+            ]
+            for col_name, col_type in columnas_stats:
+                if col_name.lower() not in columnas_existentes:
+                    try:
+                        cursor.execute(f"ALTER TABLE estadisticas_guerra ADD COLUMN {col_name} {col_type}")
+                    except Exception:
+                        pass
+        conn.commit()
+        conn.close()
+    except Exception:
+        pass
         
-    # 3. Inicialización de datos por defecto (después de crear tablas)
+    # 5. Inicialización de datos por defecto (después de crear tablas)
     try:
         conn = conectar_bd()
         cursor = conn.cursor()

@@ -340,6 +340,9 @@ def mostrar():
         
         st.code(resumen_texto.strip(), language="text")
         st.divider()
+    else:
+        st.info("ℹ️ Asigna al menos un jugador en las salas de arriba para visualizar y copiar el resumen consolidado.")
+        st.divider()
 
     st.subheader("📱 Mensajes Individuales para WhatsApp / Discord")
     st.info("💡 Despliega la sala correspondiente para copiar el mensaje individual de cada jugador.")
