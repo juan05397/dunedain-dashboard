@@ -99,7 +99,9 @@ def pantalla_login():
         st.write("")
         try:
             import os
-            if os.path.exists("assets/logo.png"):
+            if os.path.exists("Logo1.jpeg"):
+                st.image("Logo1.jpeg", width="stretch")
+            elif os.path.exists("assets/logo.png"):
                 st.image("assets/logo.png", width="stretch")
             elif os.path.exists("logo.jpg"):
                 st.image("logo.jpg", width="stretch")
@@ -197,7 +199,9 @@ else:
     # Sidebar dinámico
     try:
         import os
-        if os.path.exists("assets/logo.png"):
+        if os.path.exists("Logo1.jpeg"):
+            st.sidebar.image("Logo1.jpeg", width="stretch")
+        elif os.path.exists("assets/logo.png"):
             st.sidebar.image("assets/logo.png", width="stretch")
         elif os.path.exists("logo.jpg"):
             st.sidebar.image("logo.jpg", width="stretch")
