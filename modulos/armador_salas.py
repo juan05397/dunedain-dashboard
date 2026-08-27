@@ -320,24 +320,41 @@ def mostrar():
         
         for categoria in estructura_salas:
             cat_nombre = categoria["nombre"]
-            for i in range(categoria["cantidad"]):
-                num_sala = i + 1
-                nombre_sala_key = f"{num_sala} ({cat_nombre})"
-                jugadores_sala = selecciones_globales.get(nombre_sala_key, [])
+            cantidad = categoria["cantidad"]
+            
+            # Generar los keys de las salas para esta categoría
+            nombres_salas = [f"{i+1} ({cat_nombre})" for i in range(cantidad)]
+            
+            # Validar si al menos una de las 3 salas de esta categoría tiene jugadores asignados
+            if any(len(selecciones_globales.get(sala, [])) > 0 for sala in nombres_salas):
                 
-                # Solo incluimos la sala si tiene al menos un jugador asignado
-                if jugadores_sala:
-                    resumen_texto += f"🏛️ SALA {cat_nombre} {num_sala}\n"
-                    
-                    # Imprimir siempre 8 posiciones
-                    for j in range(8):
-                        if j < len(jugadores_sala):
-                            resumen_texto += f"{j+1}. {jugadores_sala[j]}\n"
+                # 1. Imprimir los encabezados de las salas lado a lado (ancho fijo de 26 caracteres)
+                encabezados = [f"🏛️ SALA {cat_nombre} {i+1}".ljust(26) for i in range(cantidad)]
+                resumen_texto += "".join(encabezados) + "\n"
+                
+                # 2. Imprimir los jugadores iterando fila por fila (hasta 8)
+                for i in range(8):
+                    fila_texto = ""
+                    for x, sala in enumerate(nombres_salas):
+                        lista_jugadores = selecciones_globales.get(sala, [])
+                        
+                        # Evaluar si hay jugador en este slot o poner "---"
+                        if i < len(lista_jugadores):
+                            jugador_str = f"{i+1}. {lista_jugadores[i]}"
                         else:
-                            resumen_texto += f"{j+1}. ---\n"
+                            jugador_str = f"{i+1}. ---"
+                        
+                        # Aplicar padding para mantener alineación de columnas, excepto en la última
+                        if x < cantidad - 1:
+                            fila_texto += jugador_str.ljust(26)
+                        else:
+                            fila_texto += jugador_str
+                            
+                    resumen_texto += fila_texto.rstrip() + "\n"
                     
-                    resumen_texto += "\n"  # Espacio visual entre salas
-        
+                # Espaciado final entre categorías
+                resumen_texto += "\n\n"
+                
         st.code(resumen_texto.strip(), language="text")
         st.divider()
     else:
