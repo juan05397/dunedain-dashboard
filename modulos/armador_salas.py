@@ -336,8 +336,8 @@ def mostrar():
             # Validar si al menos una de las 3 salas de esta categoría tiene jugadores asignados
             if any(len(selecciones_globales.get(sala, [])) > 0 for sala in nombres_salas):
                 
-                # 1. Imprimir los encabezados de las salas lado a lado (ancho fijo de 26 caracteres)
-                encabezados = [pad_visual(f"🏛️ SALA {cat_nombre} {i+1}", 26) for i in range(cantidad)]
+                # 1. Imprimir los encabezados de las salas lado a lado (ancho fijo de 32 caracteres con separador)
+                encabezados = [pad_visual(f"🏛️ SALA {cat_nombre} {i+1}", 32) + (" | " if i < cantidad - 1 else "") for i in range(cantidad)]
                 resumen_texto += "".join(encabezados) + "\n"
                 
                 # 2. Imprimir los jugadores iterando fila por fila (hasta 8)
@@ -354,7 +354,7 @@ def mostrar():
                         
                         # Aplicar padding calculando el ancho visual real para evitar empuje de CJK/Emojis
                         if x < cantidad - 1:
-                            fila_texto += pad_visual(jugador_str, 26)
+                            fila_texto += pad_visual(jugador_str, 32) + " | "
                         else:
                             fila_texto += jugador_str
                             
