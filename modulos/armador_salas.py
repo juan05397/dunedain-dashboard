@@ -2,7 +2,15 @@ import streamlit as st
 import pandas as pd
 import re
 import datetime
+import unicodedata
 from database import conectar_bd
+
+
+def pad_visual(texto, ancho_total):
+    # Calcula el ancho real: caracteres Fullwidth (F) o Wide (W) valen 2, el resto 1.
+    ancho_actual = sum(2 if unicodedata.east_asian_width(c) in 'WF' else 1 for c in texto)
+    espacios_faltantes = ancho_total - ancho_actual
+    return texto + " " * (espacios_faltantes if espacios_faltantes > 0 else 1)
 
 
 def normalizar_sala_db(sala_db):
@@ -329,7 +337,7 @@ def mostrar():
             if any(len(selecciones_globales.get(sala, [])) > 0 for sala in nombres_salas):
                 
                 # 1. Imprimir los encabezados de las salas lado a lado (ancho fijo de 26 caracteres)
-                encabezados = [f"🏛️ SALA {cat_nombre} {i+1}".ljust(26) for i in range(cantidad)]
+                encabezados = [pad_visual(f"🏛️ SALA {cat_nombre} {i+1}", 26) for i in range(cantidad)]
                 resumen_texto += "".join(encabezados) + "\n"
                 
                 # 2. Imprimir los jugadores iterando fila por fila (hasta 8)
@@ -344,9 +352,9 @@ def mostrar():
                         else:
                             jugador_str = f"{i+1}. ---"
                         
-                        # Aplicar padding para mantener alineación de columnas, excepto en la última
+                        # Aplicar padding calculando el ancho visual real para evitar empuje de CJK/Emojis
                         if x < cantidad - 1:
-                            fila_texto += jugador_str.ljust(26)
+                            fila_texto += pad_visual(jugador_str, 26)
                         else:
                             fila_texto += jugador_str
                             
