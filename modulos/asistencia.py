@@ -347,7 +347,7 @@ def mostrar():
                 FROM asistencia a
                 JOIN miembros m ON a.miembro_id = m.id
                 JOIN eventos e ON a.evento_id = e.id
-                WHERE a.ciclo = ?
+                WHERE a.ciclo = ? AND m.estado = 'Activo'
             """
             df_audit = pd.read_sql_query(query_audit, conexion, params=(ciclo,))
             conexion.close()
