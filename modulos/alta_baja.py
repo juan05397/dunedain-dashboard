@@ -2,7 +2,7 @@ import streamlit as st
 import sqlite3
 import pandas as pd
 from datetime import date
-from database import conectar_bd, OPCIONES_TELEFONO, parsear_telefono
+from database import conectar_bd, OPCIONES_TELEFONO, parsear_telefono, obtener_roster_activos, obtener_clases
 
 
 def normalizar_clase(nombre_clase, clases_db=None):
@@ -20,11 +20,7 @@ def normalizar_clase(nombre_clase, clases_db=None):
         return mapeo_alias[clase_lower]
     if clases_db is None:
         try:
-            conn = conectar_bd()
-            cursor = conn.cursor()
-            cursor.execute("SELECT nombre FROM clases")
-            clases_db = [c[0] for c in cursor.fetchall()]
-            conn.close()
+            clases_db = obtener_clases()['nombre'].tolist()
         except:
             clases_db = ["Bárbaro", "Guerrero Divino", "Cazador de Demonios", "Monje", "Nigromante",
                          "Arcanista", "Caballero Sangriento", "Tempestario", "Druida", "Brujo", "Desconocida"]
@@ -125,6 +121,7 @@ def mostrar():
                                         nuevo_id, motivo_baja, str(date.today())))
                                 conexion_write.commit()
                                 conexion_write.close()
+                                st.cache_data.clear()
                                 st.success(
                                     "🚫 ¡Jugador vetado definitivamente!")
                                 st.rerun()
@@ -133,12 +130,7 @@ def mostrar():
 
                 if not desea_baja_inmediata:
                     try:
-                        conn_clases = conectar_bd()
-                        cursor_clases = conn_clases.cursor()
-                        cursor_clases.execute(
-                            "SELECT nombre FROM clases ORDER BY id")
-                        lista_clases = [c[0] for c in cursor_clases.fetchall()]
-                        conn_clases.close()
+                        lista_clases = obtener_clases()['nombre'].tolist()
                     except:
                         lista_clases = ["Bárbaro", "Guerrero Divino", "Cazador de Demonios", "Monje", "Nigromante",
                                         "Arcanista", "Caballero Sangriento", "Tempestario", "Druida", "Brujo", "Desconocida"]
@@ -196,6 +188,7 @@ def mostrar():
                                             nombre_nuevo, clase_nueva_norm, reso_nueva, ic_nuevo, telefono_nuevo, check_disc, check_wa, str(fecha_ingreso), usuario_actual, ex_clan_nuevo))
                                     conexion_write.commit()
                                     conexion_write.close()
+                                    st.cache_data.clear()
                                     st.success(
                                         f"✅ ¡{nombre_nuevo} dado de alta con éxito!")
                                     st.rerun()
@@ -208,10 +201,7 @@ def mostrar():
     with tab_baja:
         st.subheader("Formulario de Salida del Clan")
         try:
-            conexion = conectar_bd()
-            df_activos = pd.read_sql_query(
-                "SELECT id, nombre FROM miembros WHERE estado='Activo' ORDER BY nombre", conexion)
-            conexion.close()
+            df_activos = obtener_roster_activos()
         except:
             df_activos = pd.DataFrame()
 
@@ -241,6 +231,7 @@ def mostrar():
                                     miembro_id), motivo_baja, str(fecha_baja)))
                             conexion_write.commit()
                             conexion_write.close()
+                            st.cache_data.clear()
                             st.success(f"❌ {miembro_baja} dado de baja.")
                             st.rerun()
                         except Exception as e:
@@ -282,11 +273,7 @@ def mostrar():
                 f"Modificando a: **{jugador_sel}** | Estado actual: <span style='color:{color_estado}; font-weight:bold'>{jugador_data['estado']}</span>", unsafe_allow_html=True)
 
             try:
-                conn_clases = conectar_bd()
-                cursor_clases = conn_clases.cursor()
-                cursor_clases.execute("SELECT nombre FROM clases ORDER BY id")
-                clases_permitidas = [c[0] for c in cursor_clases.fetchall()]
-                conn_clases.close()
+                clases_permitidas = obtener_clases()['nombre'].tolist()
             except:
                 clases_permitidas = ["Bárbaro", "Guerrero Divino", "Cazador de Demonios", "Monje", "Nigromante",
                                      "Arcanista", "Caballero Sangriento", "Tempestario", "Druida", "Brujo", "Desconocida"]
@@ -368,6 +355,7 @@ def mostrar():
                                 ''', (nombre_mod, clase_mod_norm, reso_mod, ic_mod, telefono_mod, check_disc_mod, check_wa_mod, int(jugador_data['id'])))
                                 conexion_write.commit()
                                 conexion_write.close()
+                                st.cache_data.clear()
                                 st.success(
                                     f"✅ ¡Datos de **{nombre_mod}** actualizados sin afectar su antigüedad!")
                                 st.rerun()
@@ -435,9 +423,7 @@ def mostrar():
 
                             # Cargar clases una sola vez para optimizar la carga masiva
                             try:
-                                cursor.execute("SELECT nombre FROM clases")
-                                lista_clases_masiva = [c[0]
-                                                       for c in cursor.fetchall()]
+                                lista_clases_masiva = obtener_clases()['nombre'].tolist()
                             except:
                                 lista_clases_masiva = None
 
@@ -535,6 +521,7 @@ def mostrar():
 
                             conexion.commit()
                             conexion.close()
+                            st.cache_data.clear()
 
                             st.success(
                                 f"🎉 ¡Procesamiento masivo finalizado exitosamente!")
@@ -596,6 +583,7 @@ def mostrar():
                             afectados = cursor.rowcount
                             conexion.commit()
                             conexion.close()
+                            st.cache_data.clear()
 
                             st.success(
                                 f"✅ Baja masiva ejecutada. {afectados} miembros pasaron a estado Inactivo.")
@@ -661,10 +649,7 @@ def mostrar():
                             str).str.strip().unique().tolist()
 
                         # Consultar miembros activos
-                        conexion = conectar_bd()
-                        df_activos = pd.read_sql_query(
-                            "SELECT nombre FROM miembros WHERE estado='Activo'", conexion)
-                        conexion.close()
+                        df_activos = obtener_roster_activos()
 
                         nombres_activos_set = {n.strip().lower()
                                                for n in df_activos['nombre']}
@@ -697,10 +682,7 @@ def mostrar():
 
                                     # Consultar nombres de clases en base de datos para alias
                                     try:
-                                        cursor_write.execute(
-                                            "SELECT nombre FROM clases")
-                                        clases_db = [c[0]
-                                                     for c in cursor_write.fetchall()]
+                                        clases_db = obtener_clases()['nombre'].tolist()
                                     except:
                                         clases_db = None
 
@@ -729,6 +711,7 @@ def mostrar():
 
                                     conexion_write.commit()
                                     conexion_write.close()
+                                    st.cache_data.clear()
                                     st.success(
                                         f"🎉 ¡Actualización masiva completada! Se actualizaron {actualizados} miembros activos.")
                                     st.rerun()

@@ -179,6 +179,7 @@ def pantalla_cambio_obligatorio():
                             nuevo_hash, st.session_state['usuario']))
                         conexion.commit()
                         conexion.close()
+                        st.cache_data.clear()
 
                         st.session_state['debe_cambiar'] = False
                         st.success(

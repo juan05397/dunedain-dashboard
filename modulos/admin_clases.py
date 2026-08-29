@@ -1,7 +1,7 @@
 import streamlit as st
 import sqlite3
 import pandas as pd
-from database import conectar_bd
+from database import conectar_bd, obtener_clases
 
 def formatear_nombre_clase(nombre):
     palabras = nombre.strip().split()
@@ -19,9 +19,7 @@ def mostrar():
     
     # 1. Obtener listado de clases actuales
     try:
-        conn = conectar_bd()
-        df_clases = pd.read_sql_query("SELECT id, nombre FROM clases ORDER BY id", conn)
-        conn.close()
+        df_clases = obtener_clases()
     except Exception as e:
         st.error(f"Error al cargar las clases: {e}")
         df_clases = pd.DataFrame(columns=["id", "nombre"])
@@ -70,6 +68,7 @@ def mostrar():
                             cursor_w.execute("INSERT INTO clases (nombre) VALUES (?)", (clase_formateada,))
                             conn_w.commit()
                             conn_w.close()
+                            st.cache_data.clear()
                             st.success(f"✅ ¡Clase '{clase_formateada}' creada con éxito!")
                             st.rerun()
                     except Exception as e:
@@ -108,6 +107,7 @@ def mostrar():
                                 cursor_w.execute("UPDATE clases SET nombre = ? WHERE id = ?", (clase_formateada_mod, clase_id))
                                 conn_w.commit()
                                 conn_w.close()
+                                st.cache_data.clear()
                                 st.success(f"✅ ¡Clase actualizada a '{clase_formateada_mod}' exitosamente!")
                                 st.rerun()
                         except Exception as e:

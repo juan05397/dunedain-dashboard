@@ -2,18 +2,23 @@ import streamlit as st
 import sqlite3
 import pandas as pd
 from datetime import date
-from database import conectar_bd
+from database import conectar_bd, obtener_roster_activos
+
+
+@st.cache_data(ttl=60)
+def obtener_sanciones():
+    conexion = conectar_bd()
+    df_sanciones = pd.read_sql_query(
+        '''SELECT m.nombre AS 'Jugador', t.nombre AS 'Tipo de Sanción', s.motivo AS 'Motivo', s.fecha AS 'Fecha Registro' FROM sanciones s JOIN miembros m ON s.miembro_id = m.id JOIN tipos_sancion t ON s.tipo_sancion_id = t.id ORDER BY s.id DESC''', conexion)
+    conexion.close()
+    return df_sanciones
 
 
 def mostrar():
     st.title("⚖️ Registro Central de Sanciones")
     try:
-        conexion = conectar_bd()
-        df_sanciones = pd.read_sql_query(
-            '''SELECT m.nombre AS 'Jugador', t.nombre AS 'Tipo de Sanción', s.motivo AS 'Motivo', s.fecha AS 'Fecha Registro' FROM sanciones s JOIN miembros m ON s.miembro_id = m.id JOIN tipos_sancion t ON s.tipo_sancion_id = t.id ORDER BY s.id DESC''', conexion)
-        df_activos = pd.read_sql_query(
-            "SELECT id, nombre FROM miembros WHERE estado='Activo' ORDER BY nombre", conexion)
-        conexion.close()
+        df_sanciones = obtener_sanciones()
+        df_activos = obtener_roster_activos()
     except Exception:
         df_sanciones, df_activos = pd.DataFrame(), pd.DataFrame()
 
@@ -56,7 +61,9 @@ def mostrar():
                             miembro_id, motivo_expulsion, str(date.today())))
                         conexion_write.commit()
                         conexion_write.close()
+                        st.cache_data.clear()
                         st.success("🚫 Expulsado.")
+                        st.rerun()
                     else:
                         st.error("Ingresa motivo.")
             else:
@@ -67,7 +74,10 @@ def mostrar():
                         conexion_write.cursor().execute("INSERT INTO sanciones (miembro_id, tipo_sancion_id, motivo, fecha) VALUES (?, 1, ?, ?)",
                                                         (miembro_id, motivo_adv_nuevo, str(date.today())))
                         conexion_write.commit()
+                        conexion_write.close()
+                        st.cache_data.clear()
                         st.success("⚠️ Advertencia sumada.")
+                        st.rerun()
         else:
             with st.form("form_sancion_manual"):
                 motivo_adv = st.text_input("Razón:")
@@ -76,4 +86,7 @@ def mostrar():
                     conexion_write.cursor().execute("INSERT INTO sanciones (miembro_id, tipo_sancion_id, motivo, fecha) VALUES (?, 1, ?, ?)",
                                                     (miembro_id, motivo_adv, str(date.today())))
                     conexion_write.commit()
+                    conexion_write.close()
+                    st.cache_data.clear()
                     st.success("⚠️ Registrado.")
+                    st.rerun()

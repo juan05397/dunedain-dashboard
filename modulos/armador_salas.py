@@ -3,7 +3,7 @@ import pandas as pd
 import re
 import datetime
 import unicodedata
-from database import conectar_bd
+from database import conectar_bd, obtener_roster_activos, obtener_eventos
 
 
 def pad_visual(texto, ancho_total):
@@ -32,6 +32,33 @@ def normalizar_sala_db(sala_db):
         return f"{match_new.group(1)} ({match_new.group(2).upper()})"
 
     return s
+
+
+@st.cache_data(ttl=60)
+def obtener_fechas_asistencia_evento(evento_id):
+    conexion_as = conectar_bd()
+    cursor_as = conexion_as.cursor()
+    cursor_as.execute(
+        "SELECT DISTINCT fecha FROM asistencia WHERE evento_id = ? ORDER BY fecha DESC",
+        (int(evento_id),)
+    )
+    fechas = [r[0] for r in cursor_as.fetchall() if r[0] is not None]
+    conexion_as.close()
+    return fechas
+
+
+@st.cache_data(ttl=60)
+def obtener_distribucion_salas_evento(evento_id, fecha_str):
+    conexion_as = conectar_bd()
+    query_dist = """
+        SELECT m.nombre, a.sala_asignada, a.habilidad 
+        FROM asistencia a
+        JOIN miembros m ON a.miembro_id = m.id
+        WHERE a.evento_id = ? AND a.fecha = ? AND m.estado = 'Activo'
+    """
+    df_dist = pd.read_sql_query(query_dist, conexion_as, params=(int(evento_id), str(fecha_str)))
+    conexion_as.close()
+    return df_dist
 
 
 def mostrar():
@@ -66,10 +93,7 @@ def mostrar():
             st.rerun()
 
     try:
-        conexion = conectar_bd()
-        df_activos = pd.read_sql_query(
-            "SELECT nombre, clase, resonancia, ic FROM miembros WHERE estado='Activo' ORDER BY nombre", conexion)
-        conexion.close()
+        df_activos = obtener_roster_activos()
     except Exception as e:
         st.error(f"Error al conectar con la base de datos: {e}")
         return
@@ -88,9 +112,7 @@ def mostrar():
     # PRECARGA AUTOMÁTICA DE EVENTOS Y SALAS
     # ==========================================
     try:
-        conexion_ev = conectar_bd()
-        df_eventos = pd.read_sql_query("SELECT id, nombre FROM eventos", conexion_ev)
-        conexion_ev.close()
+        df_eventos = obtener_eventos()
     except Exception as e:
         df_eventos = pd.DataFrame()
         st.error(f"Error al obtener los eventos: {e}")
@@ -140,14 +162,7 @@ def mostrar():
         # Obtener todas las fechas registradas para este evento
         fechas_registradas = []
         try:
-            conexion_as = conectar_bd()
-            cursor_as = conexion_as.cursor()
-            cursor_as.execute(
-                "SELECT DISTINCT fecha FROM asistencia WHERE evento_id = ? ORDER BY fecha DESC",
-                (int(evento_id),)
-            )
-            fechas_registradas = [r[0] for r in cursor_as.fetchall() if r[0] is not None]
-            conexion_as.close()
+            fechas_registradas = obtener_fechas_asistencia_evento(int(evento_id))
         except Exception as e:
             st.error(f"Error al obtener fechas del evento: {e}")
 
@@ -165,14 +180,7 @@ def mostrar():
 
         if fecha_seleccionada:
             try:
-                conexion_as = conectar_bd()
-                query_dist = """
-                    SELECT m.nombre, a.sala_asignada, a.habilidad 
-                    FROM asistencia a
-                    JOIN miembros m ON a.miembro_id = m.id
-                    WHERE a.evento_id = ? AND a.fecha = ? AND m.estado = 'Activo'
-                """
-                df_dist = pd.read_sql_query(query_dist, conexion_as, params=(int(evento_id), str(fecha_seleccionada)))
+                df_dist = obtener_distribucion_salas_evento(int(evento_id), str(fecha_seleccionada))
                 
                 if not df_dist.empty:
                     for _, row in df_dist.iterrows():
@@ -188,7 +196,6 @@ def mostrar():
                         habilidad_raw = row['habilidad'] if 'habilidad' in row and pd.notna(row['habilidad']) and row['habilidad'] != 'Seleccione' else "ROCA"
                         habilidad_limpia = habilidad_raw.split(" ", 1)[1] if " " in str(habilidad_raw) else str(habilidad_raw)
                         habilidades_jugadores[nombre_raw] = habilidad_limpia.upper()
-                conexion_as.close()
             except Exception as e:
                 st.error(f"Error al cargar la asignación de salas: {e}")
 

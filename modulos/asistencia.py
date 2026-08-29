@@ -6,53 +6,49 @@ import os
 import sys
 import plotly.express as px
 from datetime import date
-from database import conectar_bd, obtener_ciclo_activo
+from database import conectar_bd, obtener_ciclo_activo, obtener_eventos
 from modulos.armador_salas import normalizar_sala_db
 
-def preparar_bd():
-    """Actualiza las tablas agregando las nuevas columnas si no existen."""
-    conexion = conectar_bd()
-    cursor = conexion.cursor()
-    
-    # Agregar columnas a la tabla asistencia
-    try:
-        cursor.execute("ALTER TABLE asistencia ADD COLUMN intencion TEXT DEFAULT 'No votó'")
-    except Exception:
-        pass
-        
-    try:
-        cursor.execute("ALTER TABLE asistencia ADD COLUMN asistio_realmente INTEGER DEFAULT 0")
-    except Exception:
-        pass
-        
-    try:
-        cursor.execute("ALTER TABLE asistencia ADD COLUMN sala_asignada TEXT DEFAULT 'No asignado'")
-    except Exception:
-        pass
 
-    try:
-        cursor.execute("ALTER TABLE asistencia ADD COLUMN habilidad TEXT DEFAULT 'Seleccione'")
-    except Exception:
-        pass
-        
-    # Agregar columnas a la tabla estadisticas_guerra
-    try:
-        cursor.execute("ALTER TABLE estadisticas_guerra ADD COLUMN evento_id INTEGER")
-    except Exception:
-        pass
-        
-    try:
-        cursor.execute("ALTER TABLE estadisticas_guerra ADD COLUMN fecha DATE")
-    except Exception:
-        pass
-        
-    conexion.commit()
+@st.cache_data(ttl=60)
+def obtener_miembros_asistencia(evento_id, fecha_str):
+    conexion = conectar_bd()
+    query_miembros = """
+        SELECT 
+            m.id AS miembro_id,
+            m.nombre AS Nombre,
+            m.clase AS Clase,
+            m.resonancia AS Resonancia,
+            a.intencion,
+            a.sala_asignada,
+            a.habilidad,
+            a.asistio_realmente
+        FROM miembros m
+        LEFT JOIN asistencia a ON m.id = a.miembro_id AND a.evento_id = ? AND a.fecha = ?
+        WHERE m.estado = 'Activo'
+        ORDER BY m.nombre
+    """
+    df = pd.read_sql_query(query_miembros, conexion, params=(int(evento_id), str(fecha_str)))
     conexion.close()
+    return df
+
+
+@st.cache_data(ttl=60)
+def obtener_auditoria_asistencia(ciclo_nombre):
+    conexion = conectar_bd()
+    query_audit = """
+        SELECT m.nombre as jugador, m.clase, e.nombre as evento, a.fecha, a.intencion, a.asistio_realmente
+        FROM asistencia a
+        JOIN miembros m ON a.miembro_id = m.id
+        JOIN eventos e ON a.evento_id = e.id
+        WHERE a.ciclo = ? AND m.estado = 'Activo'
+    """
+    df = pd.read_sql_query(query_audit, conexion, params=(ciclo_nombre,))
+    conexion.close()
+    return df
 
 
 def mostrar():
-    preparar_bd()  # Ejecutamos la validación de la BD al abrir el módulo
-
     st.title("📝 Control Maestro de Asistencia")
     st.markdown(
         "Gestiona las encuestas de WhatsApp, registra la asistencia real en el juego y audita el compromiso del clan.")
@@ -61,10 +57,7 @@ def mostrar():
     # CONTROLES GLOBALES DE EVENTO
     # ==========================================
     try:
-        conexion = conectar_bd()
-        df_eventos = pd.read_sql_query(
-            "SELECT id, nombre FROM eventos", conexion)
-        conexion.close()
+        df_eventos = obtener_eventos()
     except Exception:
         df_eventos = pd.DataFrame()
 
@@ -125,24 +118,7 @@ def mostrar():
 
         # Obtener los datos actuales de los miembros activos y cruzar con su asistencia
         try:
-            conexion = conectar_bd()
-            query_miembros = """
-                SELECT 
-                    m.id AS miembro_id,
-                    m.nombre AS Nombre,
-                    m.clase AS Clase,
-                    m.resonancia AS Resonancia,
-                    a.intencion,
-                    a.sala_asignada,
-                    a.habilidad,
-                    a.asistio_realmente
-                FROM miembros m
-                LEFT JOIN asistencia a ON m.id = a.miembro_id AND a.evento_id = ? AND a.fecha = ?
-                WHERE m.estado = 'Activo'
-                ORDER BY m.nombre
-            """
-            df_miembros = pd.read_sql_query(query_miembros, conexion, params=(int(evento_id), str(fecha_evento)))
-            conexion.close()
+            df_miembros = obtener_miembros_asistencia(int(evento_id), str(fecha_evento))
         except Exception as e:
             st.error(f"Error al obtener los miembros: {e}")
             df_miembros = pd.DataFrame()
@@ -319,6 +295,7 @@ def mostrar():
                         
                         conexion_save.commit()
                         conexion_save.close()
+                        st.cache_data.clear()
                         
                         st.success("✅ Asistencia y distribución de salas guardadas con éxito.")
                         
@@ -340,17 +317,7 @@ def mostrar():
             "Visualiza la sábana de asistencia de estilo Excel, análisis de brecha de confirmaciones y KPIs del ciclo.")
 
         try:
-            conexion = conectar_bd()
-            # 1. Consulta de Datos (SQL a Pandas)
-            query_audit = """
-                SELECT m.nombre as jugador, m.clase, e.nombre as evento, a.fecha, a.intencion, a.asistio_realmente
-                FROM asistencia a
-                JOIN miembros m ON a.miembro_id = m.id
-                JOIN eventos e ON a.evento_id = e.id
-                WHERE a.ciclo = ? AND m.estado = 'Activo'
-            """
-            df_audit = pd.read_sql_query(query_audit, conexion, params=(ciclo,))
-            conexion.close()
+            df_audit = obtener_auditoria_asistencia(ciclo)
         except Exception as e:
             st.error(f"Ocurrió un error al consultar los datos de la base de datos: {e}")
             df_audit = pd.DataFrame()

@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd
 import sqlite3
-from database import conectar_bd, obtener_ciclo_activo
+from database import conectar_bd, obtener_ciclo_activo, obtener_roster_activos
 
 
 def calcular_efectividad(kills, asistencias, muertes):
@@ -9,6 +9,34 @@ def calcular_efectividad(kills, asistencias, muertes):
     # Si las muertes son 0, usamos 1 para evitar un error matemático de división por cero.
     muertes_reales = muertes if muertes > 0 else 1
     return round((kills + asistencias) / muertes_reales, 2)
+
+
+@st.cache_data(ttl=60)
+def obtener_ciclos_disponibles():
+    conexion = conectar_bd()
+    df = pd.read_sql_query("SELECT id, estado FROM ciclos_inmortales ORDER BY id DESC", conexion)
+    conexion.close()
+    return df
+
+
+@st.cache_data(ttl=60)
+def obtener_estadisticas_clan(ciclo_filtro):
+    query = '''
+        SELECT 
+            m.nombre AS Jugador,
+            m.clase AS Clase,
+            SUM(e.kills) AS Total_Kills,
+            SUM(e.asistencias) AS Total_Asistencias,
+            SUM(e.muertes_sufridas) AS Total_Muertes
+        FROM miembros m
+        LEFT JOIN estadisticas_guerra e ON m.id = e.miembro_id AND e.ciclo = ?
+        WHERE m.estado = 'Activo'
+        GROUP BY m.id
+    '''
+    conexion = conectar_bd()
+    df_stats = pd.read_sql_query(query, conexion, params=(ciclo_filtro,))
+    conexion.close()
+    return df_stats
 
 
 def mostrar():
@@ -63,10 +91,7 @@ def mostrar():
                         df_subido[col], errors='coerce').fillna(0).astype(int)
 
                 # --- VALIDACIÓN 2: Verificación estricta de Activos ---
-                conexion = conectar_bd()
-                df_activos = pd.read_sql_query(
-                    "SELECT id, nombre FROM miembros WHERE estado='Activo'", conexion)
-                conexion.close()
+                df_activos = obtener_roster_activos()
 
                 miembros_bd = {fila['nombre'].lower(): fila['id']
                                for _, fila in df_activos.iterrows()}
@@ -102,7 +127,7 @@ def mostrar():
                     st.success(
                         f"✅ Archivo perfecto. Se detectaron {len(registros_validos)} jugadores activos listos para guardar.")
 
-                    # Vista previa interactiva de lo que se va a guardar
+                    # Vista preview interactiva de lo que se va a guardar
                     df_subido['Efectividad'] = df_subido.apply(lambda x: calcular_efectividad(
                         x['Kills'], x['Asistencias'], x['Muertes']), axis=1)
                     st.dataframe(df_subido, use_container_width=True)
@@ -118,6 +143,7 @@ def mostrar():
                             ''', registros_validos)
                             conexion_write.commit()
                             conexion_write.close()
+                            st.cache_data.clear()
                             st.success(
                                 "🎉 ¡Estadísticas guardadas en el registro histórico!")
                             st.rerun()
@@ -136,9 +162,7 @@ def mostrar():
     st.subheader("🏆 Desempeño Histórico del Clan (Solo Activos)")
 
     try:
-        conexion = conectar_bd()
-        df_ciclos_disponibles = pd.read_sql_query("SELECT id, estado FROM ciclos_inmortales ORDER BY id DESC", conexion)
-        conexion.close()
+        df_ciclos_disponibles = obtener_ciclos_disponibles()
     except Exception:
         df_ciclos_disponibles = pd.DataFrame()
 
@@ -157,22 +181,7 @@ def mostrar():
         st.warning("⚠️ No hay ciclos inmortales creados. Crea uno primero en 'Administrar Ciclo Inmortal'. Se mostrarán estadísticas globales de fallback.")
 
     try:
-        # Esta consulta cruza los miembros con sus estadísticas filtradas por ciclo.
-        query = '''
-            SELECT 
-                m.nombre AS Jugador,
-                m.clase AS Clase,
-                SUM(e.kills) AS Total_Kills,
-                SUM(e.asistencias) AS Total_Asistencias,
-                SUM(e.muertes_sufridas) AS Total_Muertes
-            FROM miembros m
-            LEFT JOIN estadisticas_guerra e ON m.id = e.miembro_id AND e.ciclo = ?
-            WHERE m.estado = 'Activo'
-            GROUP BY m.id
-        '''
-        conexion = conectar_bd()
-        df_stats = pd.read_sql_query(query, conexion, params=(ciclo_filtro,))
-        conexion.close()
+        df_stats = obtener_estadisticas_clan(ciclo_filtro)
 
         # Limpieza para aquellos que son nuevos y aún no tienen guerras jugadas
         df_stats.fillna(0, inplace=True)

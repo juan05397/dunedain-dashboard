@@ -4,6 +4,14 @@ from datetime import date, datetime
 from database import conectar_bd, obtener_ciclo_activo
 
 
+@st.cache_data(ttl=60)
+def obtener_historial_ciclos():
+    conexion = conectar_bd()
+    df_ciclos = pd.read_sql_query("SELECT id, fecha_desde, fecha_hasta, estado FROM ciclos_inmortales ORDER BY id DESC", conexion)
+    conexion.close()
+    return df_ciclos
+
+
 def calcular_duracion(desde_str, hasta_str=None):
     try:
         formato = "%Y-%m-%d"
@@ -90,6 +98,8 @@ def mostrar():
                                 (fecha_desde_str,)
                             )
                             conexion.commit()
+                            conexion.close()
+                            st.cache_data.clear()
                             st.success("🎉 Ciclo inmortal creado exitosamente.")
                             st.rerun()
                         conexion.close()
@@ -123,6 +133,7 @@ def mostrar():
                             )
                             conexion.commit()
                             conexion.close()
+                            st.cache_data.clear()
                             st.success(f"🎉 Ciclo {c_id} cerrado y guardado correctamente.")
                             st.rerun()
                         except Exception as e:
@@ -135,9 +146,7 @@ def mostrar():
     # ==========================================
     st.subheader("📋 Historial de Ciclos Inmortales")
     try:
-        conexion = conectar_bd()
-        df_ciclos = pd.read_sql_query("SELECT id, fecha_desde, fecha_hasta, estado FROM ciclos_inmortales ORDER BY id DESC", conexion)
-        conexion.close()
+        df_ciclos = obtener_historial_ciclos()
     except Exception:
         df_ciclos = pd.DataFrame()
 
@@ -181,12 +190,14 @@ def mostrar():
                         if cont_asist > 0 or cont_stats > 0:
                             st.error("❌ No es posible eliminar un ciclo que posee información asociada.")
                             st.info(f"💡 Detalle de asociaciones: {cont_asist} registros de asistencia, {cont_stats} de estadísticas de guerra.")
+                            conexion.close()
                         else:
                             cursor.execute("DELETE FROM ciclos_inmortales WHERE id = ?", (int(ciclo_a_eliminar),))
                             conexion.commit()
+                            conexion.close()
+                            st.cache_data.clear()
                             st.success(f"🗑️ Ciclo {ciclo_a_eliminar} eliminado con éxito.")
                             st.rerun()
-                        conexion.close()
                     except Exception as e:
                         st.error(f"Error de base de datos al eliminar: {e}")
     else:

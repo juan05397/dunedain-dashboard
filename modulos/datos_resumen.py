@@ -4,20 +4,72 @@ import plotly.express as px
 from database import conectar_bd, OPCIONES_TELEFONO, parsear_telefono
 
 
+@st.cache_data(ttl=60)
+def obtener_resumen_activos():
+    conexion = conectar_bd()
+    df = pd.read_sql_query(
+        "SELECT nombre, clase, resonancia, ic, telefono, estado, alta_realizada_por, ex_clan FROM miembros WHERE estado='Activo' ORDER BY nombre", conexion)
+    conexion.close()
+    return df
+
+
+@st.cache_data(ttl=60)
+def obtener_resumen_inactivos():
+    conexion = conectar_bd()
+    df = pd.read_sql_query(
+        "SELECT nombre, clase, resonancia, ic, estado, fecha_baja, motivo_baja, baja_realizada_por FROM miembros WHERE estado IN ('Inactivo', 'Expulsado') ORDER BY fecha_baja DESC", conexion)
+    conexion.close()
+    return df
+
+
+@st.cache_data(ttl=60)
+def obtener_limites_estadisticas():
+    conexion = conectar_bd()
+    cursor = conexion.cursor()
+    cursor.execute("SELECT MAX(resonancia) as max_res, MAX(ic) as max_ic FROM miembros")
+    rango_data = cursor.fetchone()
+    conexion.close()
+    return rango_data
+
+
+@st.cache_data(ttl=60)
+def obtener_todos_miembros_buscador():
+    conexion = conectar_bd()
+    df = pd.read_sql_query(
+        "SELECT id, nombre, clase, resonancia, ic, telefono, usa_discord, usa_whatsapp, estado, fecha_ingreso, fecha_baja, alta_realizada_por, baja_realizada_por, motivo_baja, armadura, penetracion_armadura, potencia, resistencia, velocidad_ataque, reduccion_recuperacion, duracion_beneficiosos, rango_sombra FROM miembros ORDER BY nombre",
+        conexion
+    )
+    conexion.close()
+    return df
+
+
+@st.cache_data(ttl=60)
+def obtener_historial_jugador(miembro_id):
+    conexion = conectar_bd()
+    df_combate = pd.read_sql_query(
+        "SELECT SUM(kills) as t_kills, SUM(asistencias) as t_asist, SUM(muertes_sufridas) as t_muertes, COUNT(id) as total_batallas FROM estadisticas_guerra WHERE miembro_id = ?",
+        conexion, params=(miembro_id,)
+    )
+    df_asist_hist = pd.read_sql_query(
+        "SELECT asistio_realmente, intencion, fecha, evento_id FROM asistencia WHERE miembro_id = ? ORDER BY fecha DESC",
+        conexion, params=(miembro_id,)
+    )
+    df_sanciones_hist = pd.read_sql_query(
+        "SELECT s.motivo, s.fecha, t.nombre as tipo FROM sanciones s JOIN tipos_sancion t ON s.tipo_sancion_id = t.id WHERE s.miembro_id = ? ORDER BY s.fecha DESC",
+        conexion, params=(miembro_id,)
+    )
+    conexion.close()
+    return df_combate, df_asist_hist, df_sanciones_hist
+
+
 def mostrar():
     st.title("🛡️ Panel de Gestión - Base de Datos")
     try:
-        conexion = conectar_bd()
-
         # 1. Consultar Activos (Omitimos traer el 'id' de la BD)
-        df_activos = pd.read_sql_query(
-            "SELECT nombre, clase, resonancia, ic, telefono, estado, alta_realizada_por, ex_clan FROM miembros WHERE estado='Activo' ORDER BY nombre", conexion)
+        df_activos = obtener_resumen_activos()
 
         # 2. Consultar Inactivos/Expulsados (Agregamos la fecha de baja para que sea útil)
-        df_inactivos = pd.read_sql_query(
-            "SELECT nombre, clase, resonancia, ic, estado, fecha_baja, motivo_baja, baja_realizada_por FROM miembros WHERE estado IN ('Inactivo', 'Expulsado') ORDER BY fecha_baja DESC", conexion)
-
-        conexion.close()
+        df_inactivos = obtener_resumen_inactivos()
 
         # Generar numeración consecutiva (Posición del 1 en adelante)
         if not df_activos.empty:
@@ -267,11 +319,7 @@ def mostrar():
 
             # --- Rango dinámico para Sliders ---
             try:
-                conexion_rango = conectar_bd()
-                cursor_r = conexion_rango.cursor()
-                cursor_r.execute("SELECT MAX(resonancia) as max_res, MAX(ic) as max_ic FROM miembros")
-                rango_data = cursor_r.fetchone()
-                conexion_rango.close()
+                rango_data = obtener_limites_estadisticas()
                 limite_res = int(rango_data[0]) if (rango_data and rango_data[0] is not None) else 7000
                 limite_ic = int(rango_data[1]) if (rango_data and rango_data[1] is not None) else 40000
             except:
@@ -301,12 +349,7 @@ def mostrar():
 
             # Carga completa para el buscador
             try:
-                conexion_b = conectar_bd()
-                df_todos = pd.read_sql_query(
-                    "SELECT id, nombre, clase, resonancia, ic, telefono, usa_discord, usa_whatsapp, estado, fecha_ingreso, fecha_baja, alta_realizada_por, baja_realizada_por, motivo_baja, armadura, penetracion_armadura, potencia, resistencia, velocidad_ataque, reduccion_recuperacion, duracion_beneficiosos, rango_sombra FROM miembros ORDER BY nombre",
-                    conexion_b
-                )
-                conexion_b.close()
+                df_todos = obtener_todos_miembros_buscador()
             except:
                 df_todos = pd.DataFrame()
 
@@ -341,23 +384,7 @@ def mostrar():
 
                         # Carga cruzada de datos históricos
                         try:
-                            conexion_cruzada = conectar_bd()
-                            # 1. Combate
-                            df_combate = pd.read_sql_query(
-                                "SELECT SUM(kills) as t_kills, SUM(asistencias) as t_asist, SUM(muertes_sufridas) as t_muertes, COUNT(id) as total_batallas FROM estadisticas_guerra WHERE miembro_id = ?",
-                                conexion_cruzada, params=(miembro_id,)
-                            )
-                            # 2. Asistencias (Con evento_id para filtrar)
-                            df_asist_hist = pd.read_sql_query(
-                                "SELECT asistio_realmente, intencion, fecha, evento_id FROM asistencia WHERE miembro_id = ? ORDER BY fecha DESC",
-                                conexion_cruzada, params=(miembro_id,)
-                            )
-                            # 3. Sanciones
-                            df_sanciones_hist = pd.read_sql_query(
-                                "SELECT s.motivo, s.fecha, t.nombre as tipo FROM sanciones s JOIN tipos_sancion t ON s.tipo_sancion_id = t.id WHERE s.miembro_id = ? ORDER BY s.fecha DESC",
-                                conexion_cruzada, params=(miembro_id,)
-                            )
-                            conexion_cruzada.close()
+                            df_combate, df_asist_hist, df_sanciones_hist = obtener_historial_jugador(miembro_id)
                         except:
                             df_combate = pd.DataFrame()
                             df_asist_hist = pd.DataFrame()

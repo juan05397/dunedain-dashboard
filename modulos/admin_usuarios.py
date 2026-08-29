@@ -53,6 +53,7 @@ def mostrar():
                         cursor.execute("DELETE FROM usuarios WHERE id = ?", (usuario_id,))
                         conexion.commit()
                         conexion.close()
+                        st.cache_data.clear()
                         st.success(f"✅ Acceso revocado para el oficial **{usuario_name}**.")
                         st.rerun()
                     except Exception as e:
@@ -97,6 +98,8 @@ def mostrar():
                             f"✅ Oficial {nuevo_user} creado con contraseña temporal obligatoria.")
 
                     conexion.commit()
+                    conexion.close()
+                    st.cache_data.clear()
                     st.rerun()
 
         conexion.close()

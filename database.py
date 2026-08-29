@@ -1,6 +1,7 @@
 import sqlite3
 import os
 import streamlit as st
+import pandas as pd
 
 def conectar_bd():
     db_url = None
@@ -118,6 +119,7 @@ def preparar_db():
             cursor.execute("SELECT * FROM asistencia LIMIT 0")
             columnas_existentes = {col[0].lower() for col in cursor.description}
             columnas_asistencia = [
+                ("intencion", "TEXT DEFAULT 'No votó'"),
                 ("asistio_realmente", "INTEGER DEFAULT 0"),
                 ("sala_asignada", "TEXT DEFAULT 'No asignado'"),
                 ("habilidad", "TEXT DEFAULT 'Seleccione'")
@@ -177,6 +179,34 @@ def preparar_db():
 preparar_db()
 
 
+@st.cache_data(ttl=60)
+def obtener_roster_activos():
+    conexion = conectar_bd()
+    df = pd.read_sql_query(
+        "SELECT id, nombre, clase, resonancia, ic, telefono FROM miembros WHERE estado='Activo' ORDER BY nombre",
+        conexion
+    )
+    conexion.close()
+    return df
+
+
+@st.cache_data(ttl=60)
+def obtener_eventos():
+    conexion = conectar_bd()
+    df = pd.read_sql_query("SELECT id, nombre FROM eventos", conexion)
+    conexion.close()
+    return df
+
+
+@st.cache_data(ttl=60)
+def obtener_clases():
+    conexion = conectar_bd()
+    df = pd.read_sql_query("SELECT id, nombre FROM clases ORDER BY id", conexion)
+    conexion.close()
+    return df
+
+
+@st.cache_data(ttl=60)
 def obtener_ciclo_activo():
     conn = conectar_bd()
     cursor = conn.cursor()
