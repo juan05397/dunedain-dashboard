@@ -441,7 +441,7 @@ def mostrar():
             df_pivot = df_pivot.fillna("❌ Ausente")
             
             # Calcular columnas acumulativas
-            df_pivot['Contar Asistencia'] = (df_pivot == '✅ OK').sum(axis=1)
+            df_pivot['Contar Asistencia'] = df_pivot.isin(['✅ OK', '👻 Fantasma']).sum(axis=1)
             df_pivot['Contar Infracción'] = (df_pivot == '🚨 INFRACCIÓN').sum(axis=1)
             df_pivot['Contar Ausente'] = (df_pivot == '❌ Ausente').sum(axis=1)
             
