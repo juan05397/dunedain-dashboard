@@ -118,6 +118,7 @@ def mostrar():
         st.error(f"Error al obtener los eventos: {e}")
 
     evento_id = None
+    evento_seleccionado = None
     distribucion_salas = {}
     habilidades_jugadores = {}
     fecha_mas_reciente = None
@@ -380,7 +381,15 @@ def mostrar():
     st.info("💡 Despliega la sala correspondiente para copiar el mensaje individual de cada jugador.")
 
     if len(todos_seleccionados) > 0:
-        contenido_descarga = "⚔️ MENSAJES DE GUERRA SOMBRÍA ⚔️\n" + "="*50 + "\n\n"
+        evento_nombre_str = str(evento_seleccionado).lower() if evento_seleccionado else ""
+        es_vigilia = "vigilia" in evento_nombre_str or "rito" in evento_nombre_str
+
+        if es_vigilia:
+            contenido_descarga = "⚔️ MENSAJES DE VIGILIA DE ESPADAS / RITO ⚔️\n" + "="*50 + "\n\n"
+            nombre_archivo_descarga = f"Mensajes_Vigilia_{datetime.date.today()}.txt"
+        else:
+            contenido_descarga = "⚔️ MENSAJES DE GUERRA SOMBRÍA ⚔️\n" + "="*50 + "\n\n"
+            nombre_archivo_descarga = f"Mensajes_Guerra_{datetime.date.today()}.txt"
 
         for categoria in estructura_salas:
             cat_nombre = categoria["nombre"]
@@ -396,20 +405,34 @@ def mostrar():
                             
                             habilidad_asignada = habilidades_jugadores.get(jugador, "ROCA")
                             
-                            # Plantilla del mensaje
-                            mensaje = (
-                                f"Hola *{jugador}* 👋\n\n"
-                                f"Te recuerdo que *hoy tenemos Guerra a las 19:30 hs. server* ⚔️🔥\n\n"
-                                f"Contamos especialmente con tu apoyo en:\n\n"
-                                f"🏛️ *SALA {cat_nombre} {num_sala}*\n"
-                                f"🪨 *HABILIDAD {habilidad_asignada}*\n\n"
-                                f"No olvides tomar tus *bendiciones unos minutos antes de que comience la guerra*. 🙏\n\n"
-                                f"Tu participación es muy importante para el equipo y necesitamos que estés preparado para cumplir con esta función. 💪\n\n"
-                                f"¡Muchas gracias por tu compromiso y por darlo todo por el clan! ❤️🔥\n\n"
-                                f"*¡Vamos con toda por la victoria! 🏆🔥*\n\n"
-                                f"Atte.\n"
-                                f"*Admin. RΛGИΛЯØK*"
-                            )
+                            # Plantilla del mensaje según el evento
+                            if es_vigilia:
+                                mensaje = (
+                                    f"Hola *{jugador}* 👋\n\n"
+                                    f"Te recuerdo que *hoy tenemos Vigilia de Espadas a las 20:00 hs. server* ⚔️🔥\n\n"
+                                    f"Contamos especialmente con tu apoyo en:\n\n"
+                                    f"🏛️ *SALA {cat_nombre} {num_sala}*\n"
+                                    f"🪨 *HABILIDAD {habilidad_asignada}*\n\n"
+                                    f"Tu participación es muy importante para el equipo y necesitamos que estés preparado para cumplir con esta función. 💪\n\n"
+                                    f"¡Muchas gracias por tu compromiso y por darlo todo por el clan! ❤️🔥\n\n"
+                                    f"*¡Vamos con toda por la victoria! 🏆🔥*\n\n"
+                                    f"Atte.\n"
+                                    f"*Admin. RΛGИΛЯØK*"
+                                )
+                            else:
+                                mensaje = (
+                                    f"Hola *{jugador}* 👋\n\n"
+                                    f"Te recuerdo que *hoy tenemos Guerra a las 19:30 hs. server* ⚔️🔥\n\n"
+                                    f"Contamos especialmente con tu apoyo en:\n\n"
+                                    f"🏛️ *SALA {cat_nombre} {num_sala}*\n"
+                                    f"🪨 *HABILIDAD {habilidad_asignada}*\n\n"
+                                    f"No olvides tomar tus *bendiciones unos minutos antes de que comience la guerra*. 🙏\n\n"
+                                    f"Tu participación es muy importante para el equipo y necesitamos que estés preparado para cumplir con esta función. 💪\n\n"
+                                    f"¡Muchas gracias por tu compromiso y por darlo todo por el clan! ❤️🔥\n\n"
+                                    f"*¡Vamos con toda por la victoria! 🏆🔥*\n\n"
+                                    f"Atte.\n"
+                                    f"*Admin. RΛGИΛЯØK*"
+                                )
                             
                             st.code(mensaje, language="text")
 
@@ -420,7 +443,7 @@ def mostrar():
         st.download_button(
             label="📥 Descarga Listado",
             data=contenido_descarga,
-            file_name=f"Mensajes_Guerra_{datetime.date.today()}.txt",
+            file_name=nombre_archivo_descarga,
             mime="text/plain",
             disabled=len(todos_seleccionados) == 0,
             use_container_width=True
