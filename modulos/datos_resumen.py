@@ -5,39 +5,59 @@ from database import conectar_bd, OPCIONES_TELEFONO, parsear_telefono
 
 
 @st.cache_data(ttl=60)
-def obtener_resumen_activos():
+def obtener_resumen_activos(clan_id=None):
+    if clan_id is None:
+        try:
+            clan_id = st.session_state.get('clan_id', 1)
+        except Exception:
+            clan_id = 1
     conexion = conectar_bd()
     df = pd.read_sql_query(
-        "SELECT nombre, clase, resonancia, ic, telefono, estado, alta_realizada_por, ex_clan FROM miembros WHERE estado='Activo' ORDER BY nombre", conexion)
+        "SELECT nombre, clase, resonancia, ic, telefono, estado, alta_realizada_por, ex_clan FROM miembros WHERE estado='Activo' AND clan_id = ? ORDER BY nombre", conexion, params=(int(clan_id),))
     conexion.close()
     return df
 
 
 @st.cache_data(ttl=60)
-def obtener_resumen_inactivos():
+def obtener_resumen_inactivos(clan_id=None):
+    if clan_id is None:
+        try:
+            clan_id = st.session_state.get('clan_id', 1)
+        except Exception:
+            clan_id = 1
     conexion = conectar_bd()
     df = pd.read_sql_query(
-        "SELECT nombre, clase, resonancia, ic, estado, fecha_baja, motivo_baja, baja_realizada_por FROM miembros WHERE estado IN ('Inactivo', 'Expulsado') ORDER BY fecha_baja DESC", conexion)
+        "SELECT nombre, clase, resonancia, ic, estado, fecha_baja, motivo_baja, baja_realizada_por FROM miembros WHERE estado IN ('Inactivo', 'Expulsado') AND clan_id = ? ORDER BY fecha_baja DESC", conexion, params=(int(clan_id),))
     conexion.close()
     return df
 
 
 @st.cache_data(ttl=60)
-def obtener_limites_estadisticas():
+def obtener_limites_estadisticas(clan_id=None):
+    if clan_id is None:
+        try:
+            clan_id = st.session_state.get('clan_id', 1)
+        except Exception:
+            clan_id = 1
     conexion = conectar_bd()
     cursor = conexion.cursor()
-    cursor.execute("SELECT MAX(resonancia) as max_res, MAX(ic) as max_ic FROM miembros")
+    cursor.execute("SELECT MAX(resonancia) as max_res, MAX(ic) as max_ic FROM miembros WHERE clan_id = ?", (int(clan_id),))
     rango_data = cursor.fetchone()
     conexion.close()
     return rango_data
 
 
 @st.cache_data(ttl=60)
-def obtener_todos_miembros_buscador():
+def obtener_todos_miembros_buscador(clan_id=None):
+    if clan_id is None:
+        try:
+            clan_id = st.session_state.get('clan_id', 1)
+        except Exception:
+            clan_id = 1
     conexion = conectar_bd()
     df = pd.read_sql_query(
-        "SELECT id, nombre, clase, resonancia, ic, telefono, usa_discord, usa_whatsapp, estado, fecha_ingreso, fecha_baja, alta_realizada_por, baja_realizada_por, motivo_baja, armadura, penetracion_armadura, potencia, resistencia, velocidad_ataque, reduccion_recuperacion, duracion_beneficiosos, rango_sombra FROM miembros ORDER BY nombre",
-        conexion
+        "SELECT id, nombre, clase, resonancia, ic, telefono, usa_discord, usa_whatsapp, estado, fecha_ingreso, fecha_baja, alta_realizada_por, baja_realizada_por, motivo_baja, armadura, penetracion_armadura, potencia, resistencia, velocidad_ataque, reduccion_recuperacion, duracion_beneficiosos, rango_sombra FROM miembros WHERE clan_id = ? ORDER BY nombre",
+        conexion, params=(int(clan_id),)
     )
     conexion.close()
     return df
@@ -63,7 +83,9 @@ def obtener_historial_jugador(miembro_id):
 
 
 def mostrar():
-    st.title("🛡️ Panel de Gestión - Base de Datos")
+    clan_id = st.session_state.get("clan_id", 1)
+    clan_nombre = st.session_state.get("clan_nombre", "Clan")
+    st.title(f"🛡️ Panel de Gestión - {clan_nombre}")
     try:
         # 1. Consultar Activos (Omitimos traer el 'id' de la BD)
         df_activos = obtener_resumen_activos()

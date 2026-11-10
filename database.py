@@ -50,6 +50,16 @@ def preparar_db():
         conn = conectar_bd()
         cursor = conn.cursor()
         cursor.execute('''
+            CREATE TABLE IF NOT EXISTS clanes (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                nombre TEXT UNIQUE NOT NULL,
+                sigla TEXT,
+                logo_path TEXT,
+                descripcion TEXT,
+                estado TEXT DEFAULT 'Activo'
+            )
+        ''')
+        cursor.execute('''
             CREATE TABLE IF NOT EXISTS ciclos_inmortales (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 fecha_desde TEXT NOT NULL,
@@ -71,6 +81,25 @@ def preparar_db():
                 FOREIGN KEY (miembro_id) REFERENCES miembros(id) ON DELETE CASCADE
             )
         ''')
+        conn.commit()
+        conn.close()
+    except Exception:
+        pass
+
+    # 1b. Inicializar Clanes por defecto si la tabla está vacía
+    try:
+        conn = conectar_bd()
+        cursor = conn.cursor()
+        cursor.execute("SELECT COUNT(*) FROM clanes")
+        if cursor.fetchone()[0] == 0:
+            cursor.execute("""
+                INSERT INTO clanes (id, nombre, sigla, logo_path, descripcion, estado)
+                VALUES (1, 'ÐÛΝΞÐΛIN', 'DUN', 'Logo1.jpeg', 'Clan Principal', 'Activo')
+            """)
+            cursor.execute("""
+                INSERT INTO clanes (id, nombre, sigla, logo_path, descripcion, estado)
+                VALUES (2, 'Segundo Clan', 'CLAN2', 'Diablo Inmortal.png', 'Clan Secundario', 'Activo')
+            """)
         conn.commit()
         conn.close()
     except Exception:
@@ -97,7 +126,8 @@ def preparar_db():
                 ("velocidad_ataque", "TEXT"),
                 ("reduccion_recuperacion", "TEXT"),
                 ("duracion_beneficiosos", "TEXT"),
-                ("rango_sombra", "TEXT")
+                ("rango_sombra", "TEXT"),
+                ("clan_id", "INTEGER DEFAULT 1")
             ]
             for col_name, col_type in columnas_nuevas:
                 if col_name.lower() not in columnas_existentes:
@@ -105,6 +135,8 @@ def preparar_db():
                         cursor.execute(f"ALTER TABLE miembros ADD COLUMN {col_name} {col_type}")
                     except Exception:
                         pass
+            # Asegurar que miembros sin clan asignado apunten al Clan 1
+            cursor.execute("UPDATE miembros SET clan_id = 1 WHERE clan_id IS NULL")
         conn.commit()
         conn.close()
     except Exception:
@@ -157,8 +189,29 @@ def preparar_db():
         conn.close()
     except Exception:
         pass
+
+    # 4b. Modificaciones de columnas en usuarios y asignación de superadmin
+    try:
+        conn = conectar_bd()
+        cursor = conn.cursor()
+        cursor.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='usuarios'")
+        if cursor.fetchone() is not None:
+            cursor.execute("SELECT * FROM usuarios LIMIT 0")
+            cols_usuarios = {col[0].lower() for col in cursor.description}
+            if "clan_id" not in cols_usuarios:
+                try:
+                    cursor.execute("ALTER TABLE usuarios ADD COLUMN clan_id INTEGER DEFAULT 1")
+                except Exception:
+                    pass
+            cursor.execute("UPDATE usuarios SET clan_id = 1 WHERE clan_id IS NULL")
+            # Promover a Tuku03 a superadmin si existe
+            cursor.execute("UPDATE usuarios SET rol = 'superadmin' WHERE LOWER(usuario) = 'tuku03'")
+        conn.commit()
+        conn.close()
+    except Exception:
+        pass
         
-    # 5. Inicialización de datos por defecto (después de crear tablas)
+    # 5. Inicialización de datos por defecto (clases)
     try:
         conn = conectar_bd()
         cursor = conn.cursor()
@@ -180,11 +233,73 @@ preparar_db()
 
 
 @st.cache_data(ttl=60)
-def obtener_roster_activos():
+def obtener_clanes():
+    conexion = conectar_bd()
+    df = pd.read_sql_query("SELECT id, nombre, sigla, logo_path, descripcion, estado FROM clanes WHERE estado = 'Activo' ORDER BY id", conexion)
+    conexion.close()
+    return df
+
+
+def obtener_clan_por_id(clan_id):
+    conexion = conectar_bd()
+    cursor = conexion.cursor()
+    cursor.execute("SELECT id, nombre, sigla, logo_path, descripcion, estado FROM clanes WHERE id = ?", (int(clan_id),))
+    row = cursor.fetchone()
+    conexion.close()
+    if row:
+        return {
+            "id": row[0],
+            "nombre": row[1],
+            "sigla": row[2],
+            "logo_path": row[3],
+            "descripcion": row[4],
+            "estado": row[5]
+        }
+    return None
+
+
+def actualizar_clan(clan_id, nombre, sigla, logo_path=None, descripcion=""):
+    conexion = conectar_bd()
+    cursor = conexion.cursor()
+    if logo_path:
+        cursor.execute(
+            "UPDATE clanes SET nombre = ?, sigla = ?, logo_path = ?, descripcion = ? WHERE id = ?",
+            (nombre, sigla, logo_path, descripcion, int(clan_id))
+        )
+    else:
+        cursor.execute(
+            "UPDATE clanes SET nombre = ?, sigla = ?, descripcion = ? WHERE id = ?",
+            (nombre, sigla, descripcion, int(clan_id))
+        )
+    conexion.commit()
+    conexion.close()
+    st.cache_data.clear()
+
+
+def rotar_miembro_clan(miembro_id, clan_destino_id):
+    conexion = conectar_bd()
+    cursor = conexion.cursor()
+    cursor.execute(
+        "UPDATE miembros SET clan_id = ? WHERE id = ?",
+        (int(clan_destino_id), int(miembro_id))
+    )
+    conexion.commit()
+    conexion.close()
+    st.cache_data.clear()
+
+
+@st.cache_data(ttl=60)
+def obtener_roster_activos(clan_id=None):
+    if clan_id is None:
+        try:
+            clan_id = st.session_state.get('clan_id', 1)
+        except Exception:
+            clan_id = 1
     conexion = conectar_bd()
     df = pd.read_sql_query(
-        "SELECT id, nombre, clase, resonancia, ic, telefono FROM miembros WHERE estado='Activo' ORDER BY nombre",
-        conexion
+        "SELECT id, nombre, clase, resonancia, ic, telefono, clan_id FROM miembros WHERE estado='Activo' AND clan_id = ? ORDER BY nombre",
+        conexion,
+        params=(int(clan_id),)
     )
     conexion.close()
     return df
@@ -247,7 +362,6 @@ def parsear_telefono(telefono_str):
             return idx, telefono_str[len(opt):].strip()
             
     # Segundo: buscar si comienza con el código numérico directamente (ej. "+51")
-    # Se ordena de mayor a menor longitud de código para evitar colisiones (ej. "+591" antes de "+51")
     code_mappings = []
     for idx, opt in enumerate(OPCIONES_TELEFONO):
         parts = opt.split()
@@ -259,6 +373,4 @@ def parsear_telefono(telefono_str):
         if telefono_str.startswith(code):
             return idx, telefono_str[len(code):].strip()
             
-    # Valor por defecto: índice 0 (Argentina) y retornamos el string completo
     return 0, telefono_str
-

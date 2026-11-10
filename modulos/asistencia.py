@@ -11,7 +11,12 @@ from modulos.armador_salas import normalizar_sala_db
 
 
 @st.cache_data(ttl=60)
-def obtener_miembros_asistencia(evento_id, fecha_str):
+def obtener_miembros_asistencia(evento_id, fecha_str, clan_id=None):
+    if clan_id is None:
+        try:
+            clan_id = st.session_state.get('clan_id', 1)
+        except Exception:
+            clan_id = 1
     conexion = conectar_bd()
     query_miembros = """
         SELECT 
@@ -25,25 +30,30 @@ def obtener_miembros_asistencia(evento_id, fecha_str):
             a.asistio_realmente
         FROM miembros m
         LEFT JOIN asistencia a ON m.id = a.miembro_id AND a.evento_id = ? AND a.fecha = ?
-        WHERE m.estado = 'Activo'
+        WHERE m.estado = 'Activo' AND m.clan_id = ?
         ORDER BY m.nombre
     """
-    df = pd.read_sql_query(query_miembros, conexion, params=(int(evento_id), str(fecha_str)))
+    df = pd.read_sql_query(query_miembros, conexion, params=(int(evento_id), str(fecha_str), int(clan_id)))
     conexion.close()
     return df
 
 
 @st.cache_data(ttl=60)
-def obtener_auditoria_asistencia(ciclo_nombre):
+def obtener_auditoria_asistencia(ciclo_nombre, clan_id=None):
+    if clan_id is None:
+        try:
+            clan_id = st.session_state.get('clan_id', 1)
+        except Exception:
+            clan_id = 1
     conexion = conectar_bd()
     query_audit = """
         SELECT m.nombre as jugador, m.clase, e.nombre as evento, a.fecha, a.intencion, a.asistio_realmente
         FROM asistencia a
         JOIN miembros m ON a.miembro_id = m.id
         JOIN eventos e ON a.evento_id = e.id
-        WHERE a.ciclo = ? AND m.estado = 'Activo'
+        WHERE a.ciclo = ? AND m.estado = 'Activo' AND m.clan_id = ?
     """
-    df = pd.read_sql_query(query_audit, conexion, params=(ciclo_nombre,))
+    df = pd.read_sql_query(query_audit, conexion, params=(ciclo_nombre, int(clan_id)))
     conexion.close()
     return df
 

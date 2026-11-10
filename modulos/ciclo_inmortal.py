@@ -36,7 +36,7 @@ def mostrar():
         "Gestiona los ciclos del servidor inmortal. Permite crear nuevos ciclos, cerrar los actuales y auditar históricos.")
 
     # Control estricto de permisos
-    if st.session_state.get('rol') != 'admin':
+    if st.session_state.get('rol') not in ('admin', 'superadmin'):
         st.error("🚫 Acceso denegado. Este módulo solo está disponible para Administradores.")
         return
 

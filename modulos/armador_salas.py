@@ -48,15 +48,20 @@ def obtener_fechas_asistencia_evento(evento_id):
 
 
 @st.cache_data(ttl=60)
-def obtener_distribucion_salas_evento(evento_id, fecha_str):
+def obtener_distribucion_salas_evento(evento_id, fecha_str, clan_id=None):
+    if clan_id is None:
+        try:
+            clan_id = st.session_state.get('clan_id', 1)
+        except Exception:
+            clan_id = 1
     conexion_as = conectar_bd()
     query_dist = """
         SELECT m.nombre, a.sala_asignada, a.habilidad 
         FROM asistencia a
         JOIN miembros m ON a.miembro_id = m.id
-        WHERE a.evento_id = ? AND a.fecha = ? AND m.estado = 'Activo'
+        WHERE a.evento_id = ? AND a.fecha = ? AND m.estado = 'Activo' AND m.clan_id = ?
     """
-    df_dist = pd.read_sql_query(query_dist, conexion_as, params=(int(evento_id), str(fecha_str)))
+    df_dist = pd.read_sql_query(query_dist, conexion_as, params=(int(evento_id), str(fecha_str), int(clan_id)))
     conexion_as.close()
     return df_dist
 

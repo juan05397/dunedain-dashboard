@@ -20,7 +20,12 @@ def obtener_ciclos_disponibles():
 
 
 @st.cache_data(ttl=60)
-def obtener_estadisticas_clan(ciclo_filtro):
+def obtener_estadisticas_clan(ciclo_filtro, clan_id=None):
+    if clan_id is None:
+        try:
+            clan_id = st.session_state.get('clan_id', 1)
+        except Exception:
+            clan_id = 1
     query = '''
         SELECT 
             m.nombre AS Jugador,
@@ -30,11 +35,11 @@ def obtener_estadisticas_clan(ciclo_filtro):
             SUM(e.muertes_sufridas) AS Total_Muertes
         FROM miembros m
         LEFT JOIN estadisticas_guerra e ON m.id = e.miembro_id AND e.ciclo = ?
-        WHERE m.estado = 'Activo'
+        WHERE m.estado = 'Activo' AND m.clan_id = ?
         GROUP BY m.id
     '''
     conexion = conectar_bd()
-    df_stats = pd.read_sql_query(query, conexion, params=(ciclo_filtro,))
+    df_stats = pd.read_sql_query(query, conexion, params=(ciclo_filtro, int(clan_id)))
     conexion.close()
     return df_stats
 

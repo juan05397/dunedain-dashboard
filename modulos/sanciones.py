@@ -6,10 +6,15 @@ from database import conectar_bd, obtener_roster_activos
 
 
 @st.cache_data(ttl=60)
-def obtener_sanciones():
+def obtener_sanciones(clan_id=None):
+    if clan_id is None:
+        try:
+            clan_id = st.session_state.get('clan_id', 1)
+        except Exception:
+            clan_id = 1
     conexion = conectar_bd()
     df_sanciones = pd.read_sql_query(
-        '''SELECT m.nombre AS 'Jugador', t.nombre AS 'Tipo de Sanción', s.motivo AS 'Motivo', s.fecha AS 'Fecha Registro' FROM sanciones s JOIN miembros m ON s.miembro_id = m.id JOIN tipos_sancion t ON s.tipo_sancion_id = t.id ORDER BY s.id DESC''', conexion)
+        '''SELECT m.nombre AS 'Jugador', t.nombre AS 'Tipo de Sanción', s.motivo AS 'Motivo', s.fecha AS 'Fecha Registro' FROM sanciones s JOIN miembros m ON s.miembro_id = m.id JOIN tipos_sancion t ON s.tipo_sancion_id = t.id WHERE m.clan_id = ? ORDER BY s.id DESC''', conexion, params=(int(clan_id),))
     conexion.close()
     return df_sanciones
 

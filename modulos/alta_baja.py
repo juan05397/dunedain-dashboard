@@ -2,7 +2,7 @@ import streamlit as st
 import sqlite3
 import pandas as pd
 from datetime import date
-from database import conectar_bd, OPCIONES_TELEFONO, parsear_telefono, obtener_roster_activos, obtener_clases
+from database import conectar_bd, OPCIONES_TELEFONO, parsear_telefono, obtener_roster_activos, obtener_clases, obtener_clanes, rotar_miembro_clan
 
 
 def normalizar_clase(nombre_clase, clases_db=None):
@@ -34,24 +34,30 @@ def mostrar():
     st.title("📥 Ingreso / 📤 Egreso del Clan")
 
     # 1. Control de Permisos Dinámico
-    es_admin = st.session_state.get('rol') == 'admin'
+    es_admin = st.session_state.get('rol') in ('admin', 'superadmin')
 
-    nombres_pestanas = ["🆕 Ingreso Individual",
-                        "❌ Egreso Individual", "🔍 Buscar y Modificar"]
+    nombres_pestanas = [
+        "🆕 Ingreso Individual",
+        "❌ Egreso Individual",
+        "🔍 Buscar y Modificar",
+        "🔄 Rotación de Clan"
+    ]
     if es_admin:
         nombres_pestanas.extend(
-            ["📥 Ingreso Masivo (CSV)", "💥 Egreso Masivo", "🔄 Cambio de Clase Masiva"])
+            ["📥 Ingreso Masivo (CSV)", "💥 Egreso Masivo", "🔄 Cambio de Clase Masiva"]
+        )
 
     pestanas = st.tabs(nombres_pestanas)
 
     tab_alta = pestanas[0]
     tab_baja = pestanas[1]
     tab_modificar = pestanas[2]
+    tab_rotacion = pestanas[3]
 
     if es_admin:
-        tab_alta_masiva = pestanas[3]
-        tab_baja_masiva = pestanas[4]
-        tab_cambio_clase_masiva = pestanas[5]
+        tab_alta_masiva = pestanas[4]
+        tab_baja_masiva = pestanas[5]
+        tab_cambio_clase_masiva = pestanas[6]
 
     # ==========================================
     # PESTAÑA 1: ALTA INDIVIDUAL
@@ -180,12 +186,13 @@ def mostrar():
                                         'usuario', 'Desconocido')
                                     clase_nueva_norm = normalizar_clase(
                                         clase_nueva)
+                                    clan_actual_id = int(st.session_state.get('clan_id', 1))
                                     if miembro_bd:
-                                        cursor_write.execute("UPDATE miembros SET clase=?, resonancia=?, ic=?, telefono=?, usa_discord=?, usa_whatsapp=?, fecha_ingreso=?, estado='Activo', fecha_baja=NULL, alta_realizada_por=?, ex_clan=? WHERE id=?", (
-                                            clase_nueva_norm, reso_nueva, ic_nuevo, telefono_nuevo, check_disc, check_wa, str(fecha_ingreso), usuario_actual, ex_clan_nuevo, miembro_bd[0]))
+                                        cursor_write.execute("UPDATE miembros SET clase=?, resonancia=?, ic=?, telefono=?, usa_discord=?, usa_whatsapp=?, fecha_ingreso=?, estado='Activo', fecha_baja=NULL, alta_realizada_por=?, ex_clan=?, clan_id=? WHERE id=?", (
+                                            clase_nueva_norm, reso_nueva, ic_nuevo, telefono_nuevo, check_disc, check_wa, str(fecha_ingreso), usuario_actual, ex_clan_nuevo, clan_actual_id, miembro_bd[0]))
                                     else:
-                                        cursor_write.execute("INSERT INTO miembros (nombre, clase, resonancia, ic, telefono, usa_discord, usa_whatsapp, fecha_ingreso, estado, alta_realizada_por, ex_clan) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'Activo', ?, ?)", (
-                                            nombre_nuevo, clase_nueva_norm, reso_nueva, ic_nuevo, telefono_nuevo, check_disc, check_wa, str(fecha_ingreso), usuario_actual, ex_clan_nuevo))
+                                        cursor_write.execute("INSERT INTO miembros (nombre, clase, resonancia, ic, telefono, usa_discord, usa_whatsapp, fecha_ingreso, estado, alta_realizada_por, ex_clan, clan_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'Activo', ?, ?, ?)", (
+                                            nombre_nuevo, clase_nueva_norm, reso_nueva, ic_nuevo, telefono_nuevo, check_disc, check_wa, str(fecha_ingreso), usuario_actual, ex_clan_nuevo, clan_actual_id))
                                     conexion_write.commit()
                                     conexion_write.close()
                                     st.cache_data.clear()
@@ -250,14 +257,16 @@ def mostrar():
 
         try:
             conexion = conectar_bd()
+            clan_actual_id = int(st.session_state.get('clan_id', 1))
             if filtro_estado == "Activos":
-                query = "SELECT * FROM miembros WHERE estado='Activo' ORDER BY nombre"
+                query = "SELECT * FROM miembros WHERE estado='Activo' AND clan_id = ? ORDER BY nombre"
+                df_busqueda = pd.read_sql_query(query, conexion, params=(clan_actual_id,))
             elif filtro_estado == "Inactivos/Expulsados":
-                query = "SELECT * FROM miembros WHERE estado IN ('Inactivo', 'Expulsado') ORDER BY nombre"
+                query = "SELECT * FROM miembros WHERE estado IN ('Inactivo', 'Expulsado') AND clan_id = ? ORDER BY nombre"
+                df_busqueda = pd.read_sql_query(query, conexion, params=(clan_actual_id,))
             else:
-                query = "SELECT * FROM miembros ORDER BY nombre"
-
-            df_busqueda = pd.read_sql_query(query, conexion)
+                query = "SELECT * FROM miembros WHERE clan_id = ? ORDER BY nombre"
+                df_busqueda = pd.read_sql_query(query, conexion, params=(clan_actual_id,))
             conexion.close()
         except Exception:
             df_busqueda = pd.DataFrame()
@@ -511,12 +520,13 @@ def mostrar():
                                             ''', (cla, reso_final, ic_final, tel_final, disc, wa, id_jugador))
                                             lista_actualizados.append(nom)
                                 else:
+                                    clan_actual_id = int(st.session_state.get('clan_id', 1))
                                     # Insertar miembro completamente nuevo
                                     cursor.execute('''
                                         INSERT INTO miembros 
-                                        (nombre, clase, resonancia, ic, telefono, usa_discord, usa_whatsapp, fecha_ingreso, estado, alta_realizada_por) 
-                                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'Activo', ?)
-                                    ''', (nom, cla, res, ic, tel, disc, wa, hoy, usuario_actual))
+                                        (nombre, clase, resonancia, ic, telefono, usa_discord, usa_whatsapp, fecha_ingreso, estado, alta_realizada_por, clan_id) 
+                                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'Activo', ?, ?)
+                                    ''', (nom, cla, res, ic, tel, disc, wa, hoy, usuario_actual, clan_actual_id))
                                     lista_nuevos.append(nom)
 
                             conexion.commit()
@@ -576,9 +586,10 @@ def mostrar():
                             usuario_actual = st.session_state.get(
                                 'usuario', 'Desconocido')
 
+                            clan_actual_id = int(st.session_state.get('clan_id', 1))
                             cursor.execute(
-                                "UPDATE miembros SET estado='Inactivo', fecha_baja=?, motivo_baja=?, baja_realizada_por=? WHERE estado='Activo'",
-                                (hoy, motivo_masivo, usuario_actual)
+                                "UPDATE miembros SET estado='Inactivo', fecha_baja=?, motivo_baja=?, baja_realizada_por=? WHERE estado='Activo' AND clan_id = ?",
+                                (hoy, motivo_masivo, usuario_actual, clan_actual_id)
                             )
                             afectados = cursor.rowcount
                             conexion.commit()
@@ -703,9 +714,10 @@ def mostrar():
                                             cla_sucia, clases_db=clases_db)
 
                                         # Actualizar únicamente clase y rango_sombra
+                                        clan_actual_id = int(st.session_state.get('clan_id', 1))
                                         cursor_write.execute(
-                                            "UPDATE miembros SET clase = ?, rango_sombra = ? WHERE LOWER(nombre) = LOWER(?) AND estado = 'Activo'",
-                                            (cla_norm, rango, nom)
+                                            "UPDATE miembros SET clase = ?, rango_sombra = ? WHERE LOWER(nombre) = LOWER(?) AND estado = 'Activo' AND clan_id = ?",
+                                            (cla_norm, rango, nom, clan_actual_id)
                                         )
                                         actualizados += cursor_write.rowcount
 

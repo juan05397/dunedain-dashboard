@@ -1,21 +1,42 @@
 import streamlit as st
 import pandas as pd
-from database import conectar_bd
+from database import conectar_bd, obtener_clanes
 from werkzeug.security import generate_password_hash
 
 
 def mostrar():
-    st.title("🔐 Gestión de Accesos (Solo Administrador)")
+    st.title("🔐 Gestión de Accesos y Oficiales")
     st.markdown(
-        "Desde aquí puedes otorgar o revocar accesos a los oficiales del clan.")
+        "Desde aquí puedes otorgar o revocar accesos a los oficiales y administradores de clan.")
+
+    es_superadmin = (st.session_state.get('rol') == 'superadmin')
+    clan_actual_sesion = st.session_state.get('clan_id', 1)
 
     try:
         conexion = conectar_bd()
 
         # 1. Mostrar usuarios actuales
         st.subheader("👥 Oficiales con acceso al sistema")
-        df_usuarios = pd.read_sql_query(
-            "SELECT id, usuario, rol FROM usuarios", conexion)
+        
+        if es_superadmin:
+            # El SuperAdmin ve todos los usuarios de todos los clanes
+            query_usuarios = """
+                SELECT u.id, u.usuario, u.rol, COALESCE(c.nombre, 'Sin Clan') as clan
+                FROM usuarios u
+                LEFT JOIN clanes c ON u.clan_id = c.id
+                ORDER BY u.id
+            """
+            df_usuarios = pd.read_sql_query(query_usuarios, conexion)
+        else:
+            # Los administradores de un clan solo ven los oficiales de su propio clan
+            query_usuarios = """
+                SELECT u.id, u.usuario, u.rol, COALESCE(c.nombre, 'Sin Clan') as clan
+                FROM usuarios u
+                LEFT JOIN clanes c ON u.clan_id = c.id
+                WHERE u.clan_id = ? AND u.rol != 'superadmin'
+                ORDER BY u.id
+            """
+            df_usuarios = pd.read_sql_query(query_usuarios, conexion, params=(int(clan_actual_sesion),))
         
         seleccion = st.dataframe(
             df_usuarios,
@@ -26,11 +47,12 @@ def mostrar():
             column_config={
                 "id": None,
                 "usuario": "Usuario / Nick",
-                "rol": "Nivel de Permisos"
+                "rol": "Nivel de Permisos",
+                "clan": "Clan Asignado"
             }
         )
         
-        # Procesar selección
+        # Procesar selección para revocar acceso
         rows = []
         if hasattr(seleccion, "selection"):
             rows = getattr(seleccion.selection, "rows", [])
@@ -66,10 +88,23 @@ def mostrar():
         with st.form("nuevo_usuario"):
             nuevo_user = st.text_input("Usuario (Nick del Oficial):").strip()
             nuevo_pass = st.text_input("Contraseña Temporal:", type="password")
-            rol = st.selectbox("Nivel de Permisos:", ["oficial", "admin"])
+            
+            if es_superadmin:
+                rol = st.selectbox("Nivel de Permisos:", ["oficial", "admin", "superadmin"])
+                df_cl = obtener_clanes()
+                clanes_map = {int(r['id']): str(r['nombre']) for _, r in df_cl.iterrows()}
+                clan_destino_id = st.selectbox(
+                    "Clan Asignado:",
+                    options=list(clanes_map.keys()),
+                    format_func=lambda cid: clanes_map[cid]
+                )
+            else:
+                rol = st.selectbox("Nivel de Permisos:", ["oficial"])
+                clan_destino_id = clan_actual_sesion
+                st.info(f"🛡️ El oficial quedará asignado a tu clan actual.")
 
             st.info("💡 Si el usuario ya existe, al guardarlo se pisoteará la contraseña vieja por esta nueva temporal y se le obligará a cambiarla al entrar.")
-            submit = st.form_submit_button("💾 Guardar / Restablecer Usuario")
+            submit = st.form_submit_button("💾 Guardar / Restablecer Usuario", type="primary")
 
             if submit:
                 if not nuevo_user or len(nuevo_pass) < 6:
@@ -85,15 +120,17 @@ def mostrar():
                     existe = cursor.fetchone()
 
                     if existe:
-                        # Si existe, pisamos la contraseña y activamos debe_cambiar_pass = 1
                         cursor.execute(
-                            "UPDATE usuarios SET password_hash=?, rol=?, debe_cambiar_pass=1 WHERE id=?", (hash_pass, rol, existe[0]))
+                            "UPDATE usuarios SET password_hash=?, rol=?, clan_id=?, debe_cambiar_pass=1 WHERE id=?",
+                            (hash_pass, rol, int(clan_destino_id), existe[0])
+                        )
                         st.success(
-                            f"🔄 Contraseña vieja anulada. Se asignó la clave temporal para el oficial: {nuevo_user}.")
+                            f"🔄 Contraseña actualizada y clan asignado para el oficial: {nuevo_user}.")
                     else:
-                        # Si es nuevo, lo creamos con debe_cambiar_pass = 1
                         cursor.execute(
-                            "INSERT INTO usuarios (usuario, password_hash, rol, debe_cambiar_pass) VALUES (?, ?, ?, 1)", (nuevo_user, hash_pass, rol))
+                            "INSERT INTO usuarios (usuario, password_hash, rol, clan_id, debe_cambiar_pass) VALUES (?, ?, ?, ?, 1)",
+                            (nuevo_user, hash_pass, rol, int(clan_destino_id))
+                        )
                         st.success(
                             f"✅ Oficial {nuevo_user} creado con contraseña temporal obligatoria.")
 
