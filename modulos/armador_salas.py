@@ -405,9 +405,12 @@ def mostrar():
                 
                 if jugadores_sala:
                     with st.expander(f"Mensajes para SALA {cat_nombre} {num_sala} ({len(jugadores_sala)} jugadores)"):
+                        clan_nombre_actual = st.session_state.get('clan_nombre', 'Clan')
+
                         for jugador in jugadores_sala:
                             st.markdown(f"**Para el jugador: {jugador}**")
                             
+                            clase_asignada = datos_jugadores.get(jugador, {}).get('clase', 'Desconocida')
                             habilidad_asignada = habilidades_jugadores.get(jugador, "ROCA")
                             
                             # Plantilla del mensaje según el evento
@@ -417,12 +420,13 @@ def mostrar():
                                     f"Te recuerdo que *hoy tenemos Vigilia de Espadas a las 20:00 hs. server* ⚔️🔥\n\n"
                                     f"Contamos especialmente con tu apoyo en:\n\n"
                                     f"🏛️ *SALA {cat_nombre} {num_sala}*\n"
+                                    f"🛡️ *CLASE {clase_asignada}*\n"
                                     f"🪨 *HABILIDAD {habilidad_asignada}*\n\n"
                                     f"Tu participación es muy importante para el equipo y necesitamos que estés preparado para cumplir con esta función. 💪\n\n"
                                     f"¡Muchas gracias por tu compromiso y por darlo todo por el clan! ❤️🔥\n\n"
                                     f"*¡Vamos con toda por la victoria! 🏆🔥*\n\n"
                                     f"Atte.\n"
-                                    f"*Admin. RΛGИΛЯØK*"
+                                    f"*Admin. {clan_nombre_actual}*"
                                 )
                             else:
                                 mensaje = (
@@ -430,13 +434,14 @@ def mostrar():
                                     f"Te recuerdo que *hoy tenemos Guerra a las 19:30 hs. server* ⚔️🔥\n\n"
                                     f"Contamos especialmente con tu apoyo en:\n\n"
                                     f"🏛️ *SALA {cat_nombre} {num_sala}*\n"
+                                    f"🛡️ *CLASE {clase_asignada}*\n"
                                     f"🪨 *HABILIDAD {habilidad_asignada}*\n\n"
                                     f"No olvides tomar tus *bendiciones unos minutos antes de que comience la guerra*. 🙏\n\n"
                                     f"Tu participación es muy importante para el equipo y necesitamos que estés preparado para cumplir con esta función. 💪\n\n"
                                     f"¡Muchas gracias por tu compromiso y por darlo todo por el clan! ❤️🔥\n\n"
                                     f"*¡Vamos con toda por la victoria! 🏆🔥*\n\n"
                                     f"Atte.\n"
-                                    f"*Admin. RΛGИΛЯØK*"
+                                    f"*Admin. {clan_nombre_actual}*"
                                 )
                             
                             st.code(mensaje, language="text")
