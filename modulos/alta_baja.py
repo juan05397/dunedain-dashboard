@@ -72,7 +72,7 @@ def mostrar():
                 conexion = conectar_bd()
                 cursor = conexion.cursor()
                 cursor.execute(
-                    "SELECT id, estado FROM miembros WHERE LOWER(nombre) = LOWER(?)", (nombre_nuevo,))
+                    "SELECT id, estado, clan_id FROM miembros WHERE LOWER(nombre) = LOWER(?)", (nombre_nuevo,))
                 miembro_bd = cursor.fetchone()
                 cursor.execute('''SELECT t.nombre, s.motivo FROM sanciones s 
                                 JOIN tipos_sancion t ON s.tipo_sancion_id = t.id
@@ -91,9 +91,10 @@ def mostrar():
             except Exception:
                 st.error("Error al consultar antecedentes.")
 
-            if miembro_bd and miembro_bd[1] == 'Activo':
+            clan_actual_id_check = int(st.session_state.get('clan_id', 1))
+            if miembro_bd and miembro_bd[1] == 'Activo' and (len(miembro_bd) > 2 and miembro_bd[2] == clan_actual_id_check):
                 st.info(
-                    f"ℹ️ El jugador **{nombre_nuevo}** ya es un miembro **ACTIVO**.")
+                    f"ℹ️ El jugador **{nombre_nuevo}** ya es un miembro **ACTIVO** de este clan.")
             elif veto_definitivo:
                 st.error(
                     f"🚫 **REGISTRO BLOQUEADO:** Vetado definitivamente. Motivo: {motivo_previo}")
@@ -480,13 +481,16 @@ def mostrar():
                                 disc = 1 if disc_str in [
                                     'si', 'sí', 'yes', 'true', '1'] else 0
 
+                                clan_actual_id = int(st.session_state.get('clan_id', 1))
+
                                 # Consultar existencia en base de datos
                                 cursor.execute(
-                                    "SELECT id, estado, resonancia, ic, telefono FROM miembros WHERE LOWER(nombre) = LOWER(?)", (nom,))
+                                    "SELECT id, estado, resonancia, ic, telefono, clan_id FROM miembros WHERE LOWER(nombre) = LOWER(?)", (nom,))
                                 bd_data = cursor.fetchone()
 
                                 if bd_data:
                                     id_jugador, estado_actual, reso_bd, ic_bd, tel_bd = bd_data[0], bd_data[1], bd_data[2], bd_data[3], bd_data[4]
+                                    clan_anterior = bd_data[5] if len(bd_data) > 5 and bd_data[5] is not None else 1
 
                                     # Verificar veto definitivo antes de cualquier acción
                                     cursor.execute(
@@ -503,21 +507,21 @@ def mostrar():
                                         ic_final = ic if ic > 0 else ic_bd_val
                                         tel_final = tel if tel != "" else tel_bd_val
 
-                                        if estado_actual != 'Activo':
-                                            # Reactivar y actualizar estadísticas completas
+                                        if estado_actual != 'Activo' or int(clan_anterior) != clan_actual_id:
+                                            # Reactivar y/o reasignar al clan actual actualizando estadísticas completas
                                             cursor.execute('''
                                                 UPDATE miembros 
-                                                SET estado='Activo', fecha_ingreso=?, fecha_baja=NULL, clase=?, resonancia=?, ic=?, telefono=?, usa_discord=?, usa_whatsapp=?, alta_realizada_por=? 
+                                                SET estado='Activo', fecha_ingreso=?, fecha_baja=NULL, clase=?, resonancia=?, ic=?, telefono=?, usa_discord=?, usa_whatsapp=?, alta_realizada_por=?, clan_id=? 
                                                 WHERE id=?
-                                            ''', (hoy, cla, reso_final, ic_final, tel_final, disc, wa, usuario_actual, id_jugador))
+                                            ''', (hoy, cla, reso_final, ic_final, tel_final, disc, wa, usuario_actual, clan_actual_id, id_jugador))
                                             lista_reingresos.append(nom)
                                         else:
-                                            # Actualizar estadísticas manteniendo la antigüedad
+                                            # Actualizar estadísticas manteniendo la antigüedad y asegurando el clan actual
                                             cursor.execute('''
                                                 UPDATE miembros 
-                                                SET clase=?, resonancia=?, ic=?, telefono=?, usa_discord=?, usa_whatsapp=? 
+                                                SET clase=?, resonancia=?, ic=?, telefono=?, usa_discord=?, usa_whatsapp=?, clan_id=? 
                                                 WHERE id=?
-                                            ''', (cla, reso_final, ic_final, tel_final, disc, wa, id_jugador))
+                                            ''', (cla, reso_final, ic_final, tel_final, disc, wa, clan_actual_id, id_jugador))
                                             lista_actualizados.append(nom)
                                 else:
                                     clan_actual_id = int(st.session_state.get('clan_id', 1))
