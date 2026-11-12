@@ -375,13 +375,108 @@ def mostrar():
             st.info("No se encontraron jugadores bajo el filtro seleccionado.")
 
     # ==========================================
+    # PESTAÑA 4: ROTACIÓN / TRASPASO DE CLAN
+    # ==========================================
+    with tab_rotacion:
+        st.subheader("🔄 Rotación y Transferencia de Miembros entre Clanes")
+        st.markdown(
+            "Transfiere uno o varios jugadores activos de un clan a otro en un solo paso. "
+            "**Los jugadores conservan todo su historial:** estadísticas de guerra, asistencias, resonancia, IC y teléfono."
+        )
+
+        try:
+            df_todos_clanes = obtener_clanes()
+            if len(df_todos_clanes) < 2:
+                st.warning("Se necesitan al menos 2 clanes activos para realizar transferencias.")
+            else:
+                clanes_dict = {int(r['id']): str(r['nombre']) for _, r in df_todos_clanes.iterrows()}
+                clan_sesion_id = int(st.session_state.get('clan_id', 1))
+                ids_clanes = list(clanes_dict.keys())
+
+                col_orig, col_dest = st.columns(2)
+                with col_orig:
+                    idx_orig = ids_clanes.index(clan_sesion_id) if clan_sesion_id in ids_clanes else 0
+                    clan_origen_sel = st.selectbox(
+                        "📤 Clan de Origen (desde donde salen):",
+                        options=ids_clanes,
+                        format_func=lambda cid: f"🛡️ {clanes_dict[cid]}",
+                        index=idx_orig,
+                        key="rot_clan_origen"
+                    )
+
+                opciones_destino = [cid for cid in ids_clanes if cid != clan_origen_sel]
+                with col_dest:
+                    clan_destino_sel = st.selectbox(
+                        "📥 Clan de Destino (hacia donde van):",
+                        options=opciones_destino,
+                        format_func=lambda cid: f"⚔️ {clanes_dict[cid]}",
+                        key="rot_clan_destino"
+                    )
+
+                df_activos_origen = obtener_roster_activos(clan_origen_sel)
+
+                if df_activos_origen.empty:
+                    st.info(f"No hay miembros activos en **{clanes_dict[clan_origen_sel]}** para transferir.")
+                else:
+                    jugadores_seleccionados = st.multiselect(
+                        f"Selecciona uno o varios jugadores de {clanes_dict[clan_origen_sel]} ({len(df_activos_origen)} activos):",
+                        options=df_activos_origen['nombre'].tolist(),
+                        placeholder="Elige uno o más jugadores...",
+                        key="rot_multiselect_jugadores"
+                    )
+
+                    motivo_rotacion = st.text_input(
+                        "Motivo de la transferencia (Opcional):",
+                        placeholder="Ej: Rotación a UИИATUЯAL / Refuerzo de Guerra",
+                        key="rot_motivo"
+                    ).strip()
+
+                    if jugadores_seleccionados:
+                        st.info(
+                            f"⚡ Se transferirán **{len(jugadores_seleccionados)}** jugador(es) desde "
+                            f"**{clanes_dict[clan_origen_sel]}** hacia **{clanes_dict[clan_destino_sel]}**: "
+                            f"{', '.join(jugadores_seleccionados)}"
+                        )
+
+                        if st.button(
+                            f"🚀 Confirmar Transferencia de {len(jugadores_seleccionados)} Jugador(es) a {clanes_dict[clan_destino_sel]}",
+                            type="primary",
+                            key="btn_confirmar_rotacion"
+                        ):
+                            try:
+                                conn_rot = conectar_bd()
+                                cur_rot = conn_rot.cursor()
+                                ids_mover = df_activos_origen[
+                                    df_activos_origen['nombre'].isin(jugadores_seleccionados)
+                                ]['id'].astype(int).tolist()
+
+                                for mid in ids_mover:
+                                    cur_rot.execute(
+                                        "UPDATE miembros SET clan_id = ?, estado = 'Activo' WHERE id = ?",
+                                        (int(clan_destino_sel), int(mid))
+                                    )
+                                conn_rot.commit()
+                                conn_rot.close()
+                                st.cache_data.clear()
+                                st.success(
+                                    f"🎉 ¡Transferencia exitosa! {len(ids_mover)} jugador(es) ahora pertenecen a **{clanes_dict[clan_destino_sel]}**."
+                                )
+                                st.rerun()
+                            except Exception as ex_rot:
+                                st.error(f"Error al transferir jugadores: {ex_rot}")
+        except Exception as e_rot:
+            st.error(f"Error al cargar el módulo de rotación: {e_rot}")
+
+    # ==========================================
     # PESTAÑAS ADMINISTRADOR
     # ==========================================
     if es_admin:
         with tab_alta_masiva:
-            st.subheader("📥 Carga y Actualización Masiva")
+            clan_actual_id_vista = int(st.session_state.get('clan_id', 1))
+            nombre_clan_vista = st.session_state.get('clan_nombre', 'Clan Actual')
+            st.subheader(f"📥 Carga y Actualización Masiva — {nombre_clan_vista}")
             st.markdown(
-                "Sube un archivo `.csv` o `.xlsx` estructurado para actualizar o registrar múltiples miembros del clan.")
+                f"Sube un archivo `.csv` o `.xlsx` estructurado para registrar o actualizar los miembros activos de **{nombre_clan_vista}**.")
 
             # --- Generador Dinámico de Plantilla Excel ---
             import io
@@ -437,10 +532,26 @@ def mostrar():
                             except:
                                 lista_clases_masiva = None
 
+                            clan_actual_id = int(st.session_state.get('clan_id', 1))
+
+                            # Precargar todos los miembros existentes (matching Unicode case-insensitive en Python)
+                            cursor.execute("SELECT id, nombre, estado, resonancia, ic, telefono, clan_id FROM miembros")
+                            mapa_miembros_bd = {}
+                            for row_m in cursor.fetchall():
+                                if row_m[1]:
+                                    mapa_miembros_bd[str(row_m[1]).strip().lower()] = row_m
+
+                            # Precargar vetos definitivos
+                            cursor.execute(
+                                "SELECT DISTINCT s.miembro_id FROM sanciones s JOIN tipos_sancion t ON s.tipo_sancion_id = t.id WHERE t.nombre='Definitiva'"
+                            )
+                            ids_vetados = {int(r[0]) for r in cursor.fetchall() if r[0] is not None}
+
                             # Listas para reporte visual
                             lista_nuevos = []
                             lista_actualizados = []
                             lista_reingresos = []
+                            lista_transferidos = []
                             lista_bloqueados = []
 
                             for _, fila in df_masivo.iterrows():
@@ -468,7 +579,6 @@ def mostrar():
                                 ic = limpiar_int(fila.get('IC'), 0)
                                 tel = limpiar_string(fila.get('Telefono'), '')
                                 if tel.endswith('.0'):
-                                    # Corregir floats tipo "12345.0"
                                     tel = tel[:-2]
 
                                 wa_str = limpiar_string(
@@ -481,24 +591,19 @@ def mostrar():
                                 disc = 1 if disc_str in [
                                     'si', 'sí', 'yes', 'true', '1'] else 0
 
-                                clan_actual_id = int(st.session_state.get('clan_id', 1))
-
-                                # Consultar existencia en base de datos
-                                cursor.execute(
-                                    "SELECT id, estado, resonancia, ic, telefono, clan_id FROM miembros WHERE LOWER(nombre) = LOWER(?)", (nom,))
-                                bd_data = cursor.fetchone()
+                                bd_data = mapa_miembros_bd.get(nom.lower())
 
                                 if bd_data:
-                                    id_jugador, estado_actual, reso_bd, ic_bd, tel_bd = bd_data[0], bd_data[1], bd_data[2], bd_data[3], bd_data[4]
-                                    clan_anterior = bd_data[5] if len(bd_data) > 5 and bd_data[5] is not None else 1
+                                    id_jugador = int(bd_data[0])
+                                    estado_actual = bd_data[2]
+                                    reso_bd = bd_data[3]
+                                    ic_bd = bd_data[4]
+                                    tel_bd = bd_data[5]
+                                    clan_anterior = int(bd_data[6]) if (len(bd_data) > 6 and bd_data[6] is not None) else 1
 
-                                    # Verificar veto definitivo antes de cualquier acción
-                                    cursor.execute(
-                                        "SELECT 1 FROM sanciones s JOIN tipos_sancion t ON s.tipo_sancion_id = t.id WHERE s.miembro_id=? AND t.nombre='Definitiva'", (id_jugador,))
-                                    if cursor.fetchone():
+                                    if id_jugador in ids_vetados:
                                         lista_bloqueados.append(nom)
                                     else:
-                                        # Lógica de fallback para evitar pérdida de datos
                                         reso_bd_val = reso_bd if (reso_bd is not None) else 0
                                         ic_bd_val = ic_bd if (ic_bd is not None) else 0
                                         tel_bd_val = str(tel_bd).strip() if (tel_bd is not None) else ""
@@ -507,16 +612,26 @@ def mostrar():
                                         ic_final = ic if ic > 0 else ic_bd_val
                                         tel_final = tel if tel != "" else tel_bd_val
 
-                                        if estado_actual != 'Activo' or int(clan_anterior) != clan_actual_id:
-                                            # Reactivar y/o reasignar al clan actual actualizando estadísticas completas
+                                        if clan_anterior != clan_actual_id:
+                                            # Viene de otro clan (activo o inactivo): transferir y activar en el clan actual
                                             cursor.execute('''
                                                 UPDATE miembros 
-                                                SET estado='Activo', fecha_ingreso=?, fecha_baja=NULL, clase=?, resonancia=?, ic=?, telefono=?, usa_discord=?, usa_whatsapp=?, alta_realizada_por=?, clan_id=? 
+                                                SET estado='Activo', fecha_ingreso=?, fecha_baja=NULL, motivo_baja=NULL, baja_realizada_por=NULL,
+                                                    clase=?, resonancia=?, ic=?, telefono=?, usa_discord=?, usa_whatsapp=?, alta_realizada_por=?, clan_id=? 
+                                                WHERE id=?
+                                            ''', (hoy, cla, reso_final, ic_final, tel_final, disc, wa, usuario_actual, clan_actual_id, id_jugador))
+                                            lista_transferidos.append(nom)
+                                        elif estado_actual != 'Activo':
+                                            # Estaba inactivo en este mismo clan: reactivar
+                                            cursor.execute('''
+                                                UPDATE miembros 
+                                                SET estado='Activo', fecha_ingreso=?, fecha_baja=NULL, motivo_baja=NULL, baja_realizada_por=NULL,
+                                                    clase=?, resonancia=?, ic=?, telefono=?, usa_discord=?, usa_whatsapp=?, alta_realizada_por=?, clan_id=? 
                                                 WHERE id=?
                                             ''', (hoy, cla, reso_final, ic_final, tel_final, disc, wa, usuario_actual, clan_actual_id, id_jugador))
                                             lista_reingresos.append(nom)
                                         else:
-                                            # Actualizar estadísticas manteniendo la antigüedad y asegurando el clan actual
+                                            # Ya estaba activo en este clan: actualizar estadísticas
                                             cursor.execute('''
                                                 UPDATE miembros 
                                                 SET clase=?, resonancia=?, ic=?, telefono=?, usa_discord=?, usa_whatsapp=?, clan_id=? 
@@ -524,8 +639,7 @@ def mostrar():
                                             ''', (cla, reso_final, ic_final, tel_final, disc, wa, clan_actual_id, id_jugador))
                                             lista_actualizados.append(nom)
                                 else:
-                                    clan_actual_id = int(st.session_state.get('clan_id', 1))
-                                    # Insertar miembro completamente nuevo
+                                    # Insertar miembro completamente nuevo en este clan
                                     cursor.execute('''
                                         INSERT INTO miembros 
                                         (nombre, clase, resonancia, ic, telefono, usa_discord, usa_whatsapp, fecha_ingreso, estado, alta_realizada_por, clan_id) 
@@ -549,6 +663,11 @@ def mostrar():
                                 st.info(
                                     f"🔄 **{len(lista_actualizados)} Miembros Activos Actualizados:**")
                                 st.markdown(", ".join(lista_actualizados))
+
+                            if lista_transferidos:
+                                st.success(
+                                    f"🔀 **{len(lista_transferidos)} Miembros Transferidos y Activados en {nombre_clan_vista}:**")
+                                st.markdown(", ".join(lista_transferidos))
 
                             if lista_reingresos:
                                 st.success(

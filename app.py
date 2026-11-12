@@ -1,4 +1,5 @@
 import os
+import importlib
 import streamlit as st
 from werkzeug.security import check_password_hash, generate_password_hash
 from database import conectar_bd, obtener_clanes, obtener_clan_por_id
@@ -330,24 +331,34 @@ else:
 
     # Navegación a módulos
     if menu == "📊 Datos y Resumen":
+        importlib.reload(datos_resumen)
         datos_resumen.mostrar()
     elif menu == "📥 Ingreso / 📤 Egreso":
+        importlib.reload(alta_baja)
         alta_baja.mostrar()
     elif menu == "📝 Asistencia Masiva":
+        importlib.reload(asistencia)
         asistencia.mostrar()
     elif menu == "⚖️ Sanciones y Advertencias":
+        importlib.reload(sanciones)
         sanciones.mostrar()
     elif menu == "⚔️ Estadísticas de Guerra":
+        importlib.reload(estadisticas)
         estadisticas.mostrar()
     elif menu == "🗺️ Armador de Salas":
+        importlib.reload(armador_salas)
         armador_salas.mostrar()
     elif menu == "🔐 Gestión de Accesos":
+        importlib.reload(admin_usuarios)
         admin_usuarios.mostrar()
     elif menu == "⏳ Administrar Ciclo Inmortal":
+        importlib.reload(ciclo_inmortal)
         ciclo_inmortal.mostrar()
     elif menu == "⚙️ Administrar Clases":
+        importlib.reload(admin_clases)
         admin_clases.mostrar()
     elif menu == "🏰 Configuración de Clanes":
+        importlib.reload(admin_clanes)
         admin_clanes.mostrar()
     elif menu == "🚪 Cerrar Sesión":
         st.session_state['logeado'] = False
