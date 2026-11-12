@@ -64,7 +64,9 @@ def preparar_db():
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 fecha_desde TEXT NOT NULL,
                 fecha_hasta TEXT,
-                estado TEXT CHECK(estado IN ('Activo', 'Finalizado')) NOT NULL DEFAULT 'Activo'
+                estado TEXT CHECK(estado IN ('Activo', 'Finalizado')) NOT NULL DEFAULT 'Activo',
+                clan_id INTEGER DEFAULT 1,
+                numero_ciclo INTEGER
             )
         ''')
         cursor.execute('''
@@ -100,6 +102,38 @@ def preparar_db():
                 INSERT INTO clanes (id, nombre, sigla, logo_path, descripcion, estado)
                 VALUES (2, 'Segundo Clan', 'CLAN2', 'Diablo Inmortal.png', 'Clan Secundario', 'Activo')
             """)
+        conn.commit()
+        conn.close()
+    except Exception:
+        pass
+
+    # 1c. Modificaciones en ciclos_inmortales para independencia por clan y numeración propia
+    try:
+        conn = conectar_bd()
+        cursor = conn.cursor()
+        cursor.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='ciclos_inmortales'")
+        if cursor.fetchone() is not None:
+            cursor.execute("SELECT * FROM ciclos_inmortales LIMIT 0")
+            cols_ciclos = {col[0].lower() for col in cursor.description}
+            if "clan_id" not in cols_ciclos:
+                try:
+                    cursor.execute("ALTER TABLE ciclos_inmortales ADD COLUMN clan_id INTEGER DEFAULT 1")
+                except Exception:
+                    pass
+            if "numero_ciclo" not in cols_ciclos:
+                try:
+                    cursor.execute("ALTER TABLE ciclos_inmortales ADD COLUMN numero_ciclo INTEGER")
+                except Exception:
+                    pass
+            cursor.execute("UPDATE ciclos_inmortales SET clan_id = 1 WHERE clan_id IS NULL")
+            cursor.execute("UPDATE ciclos_inmortales SET numero_ciclo = id WHERE numero_ciclo IS NULL")
+
+            # Si el Clan 2 no tiene aún su Ciclo 1 creado, inicializar su Ciclo 1 Activo independiente
+            cursor.execute("SELECT COUNT(*) FROM ciclos_inmortales WHERE clan_id = 2")
+            if cursor.fetchone()[0] == 0:
+                cursor.execute(
+                    "INSERT INTO ciclos_inmortales (fecha_desde, fecha_hasta, estado, clan_id, numero_ciclo) VALUES ('2026-11-13', NULL, 'Activo', 2, 1)"
+                )
         conn.commit()
         conn.close()
     except Exception:
@@ -154,7 +188,8 @@ def preparar_db():
                 ("intencion", "TEXT DEFAULT 'No votó'"),
                 ("asistio_realmente", "INTEGER DEFAULT 0"),
                 ("sala_asignada", "TEXT DEFAULT 'No asignado'"),
-                ("habilidad", "TEXT DEFAULT 'Seleccione'")
+                ("habilidad", "TEXT DEFAULT 'Seleccione'"),
+                ("clan_id", "INTEGER DEFAULT 1")
             ]
             for col_name, col_type in columnas_asistencia:
                 if col_name.lower() not in columnas_existentes:
@@ -162,6 +197,7 @@ def preparar_db():
                         cursor.execute(f"ALTER TABLE asistencia ADD COLUMN {col_name} {col_type}")
                     except Exception:
                         pass
+            cursor.execute("UPDATE asistencia SET clan_id = 1 WHERE clan_id IS NULL")
         conn.commit()
         conn.close()
     except Exception:
@@ -177,7 +213,8 @@ def preparar_db():
             columnas_existentes = {col[0].lower() for col in cursor.description}
             columnas_stats = [
                 ("evento_id", "INTEGER"),
-                ("fecha", "DATE")
+                ("fecha", "DATE"),
+                ("clan_id", "INTEGER DEFAULT 1")
             ]
             for col_name, col_type in columnas_stats:
                 if col_name.lower() not in columnas_existentes:
@@ -185,6 +222,7 @@ def preparar_db():
                         cursor.execute(f"ALTER TABLE estadisticas_guerra ADD COLUMN {col_name} {col_type}")
                     except Exception:
                         pass
+            cursor.execute("UPDATE estadisticas_guerra SET clan_id = 1 WHERE clan_id IS NULL")
         conn.commit()
         conn.close()
     except Exception:
@@ -322,10 +360,18 @@ def obtener_clases():
 
 
 @st.cache_data(ttl=60)
-def obtener_ciclo_activo():
+def obtener_ciclo_activo(clan_id=None):
+    if clan_id is None:
+        try:
+            clan_id = st.session_state.get('clan_id', 1)
+        except Exception:
+            clan_id = 1
     conn = conectar_bd()
     cursor = conn.cursor()
-    cursor.execute("SELECT id, fecha_desde, estado FROM ciclos_inmortales WHERE estado = 'Activo'")
+    cursor.execute(
+        "SELECT COALESCE(numero_ciclo, id), fecha_desde, estado FROM ciclos_inmortales WHERE estado = 'Activo' AND COALESCE(clan_id, 1) = ?",
+        (int(clan_id),)
+    )
     res = cursor.fetchone()
     conn.close()
     return res

@@ -29,11 +29,11 @@ def obtener_miembros_asistencia(evento_id, fecha_str, clan_id=None):
             a.habilidad,
             a.asistio_realmente
         FROM miembros m
-        LEFT JOIN asistencia a ON m.id = a.miembro_id AND a.evento_id = ? AND a.fecha = ?
+        LEFT JOIN asistencia a ON m.id = a.miembro_id AND a.evento_id = ? AND a.fecha = ? AND COALESCE(a.clan_id, m.clan_id) = ?
         WHERE m.estado = 'Activo' AND m.clan_id = ?
         ORDER BY m.nombre
     """
-    df = pd.read_sql_query(query_miembros, conexion, params=(int(evento_id), str(fecha_str), int(clan_id)))
+    df = pd.read_sql_query(query_miembros, conexion, params=(int(evento_id), str(fecha_str), int(clan_id), int(clan_id)))
     conexion.close()
     return df
 
@@ -51,9 +51,9 @@ def obtener_auditoria_asistencia(ciclo_nombre, clan_id=None):
         FROM asistencia a
         JOIN miembros m ON a.miembro_id = m.id
         JOIN eventos e ON a.evento_id = e.id
-        WHERE a.ciclo = ? AND m.estado = 'Activo' AND m.clan_id = ?
+        WHERE a.ciclo = ? AND m.estado = 'Activo' AND m.clan_id = ? AND COALESCE(a.clan_id, m.clan_id) = ?
     """
-    df = pd.read_sql_query(query_audit, conexion, params=(ciclo_nombre, int(clan_id)))
+    df = pd.read_sql_query(query_audit, conexion, params=(ciclo_nombre, int(clan_id), int(clan_id)))
     conexion.close()
     return df
 
@@ -71,7 +71,8 @@ def mostrar():
     except Exception:
         df_eventos = pd.DataFrame()
 
-    ciclo_activo = obtener_ciclo_activo()
+    clan_id_actual = int(st.session_state.get('clan_id', 1))
+    ciclo_activo = obtener_ciclo_activo(clan_id_actual)
     if not ciclo_activo:
         st.error("❌ No existe un ciclo inmortal activo en el sistema.")
         st.info("💡 Un administrador debe crear un ciclo inmortal activo para poder gestionar asistencias.")
@@ -242,15 +243,15 @@ def mostrar():
                         
                         # Paso A: Precálculo de Inasistencias en Bloque
                         cursor_save.execute(
-                            "SELECT miembro_id, COUNT(*) FROM asistencia WHERE ciclo = ? AND asistio_realmente = 0 AND (evento_id != ? OR fecha != ?) GROUP BY miembro_id",
-                            (ciclo, int(evento_id), str(fecha_evento))
+                            "SELECT miembro_id, COUNT(*) FROM asistencia WHERE ciclo = ? AND COALESCE(clan_id, 1) = ? AND asistio_realmente = 0 AND (evento_id != ? OR fecha != ?) GROUP BY miembro_id",
+                            (ciclo, clan_id_actual, int(evento_id), str(fecha_evento))
                         )
                         dict_inasistencias = {row[0]: row[1] for row in cursor_save.fetchall()}
 
                         # Paso B: Precálculo de Registros Existentes
                         cursor_save.execute(
-                            "SELECT miembro_id, id FROM asistencia WHERE evento_id = ? AND ciclo = ? AND fecha = ?",
-                            (int(evento_id), ciclo, str(fecha_evento))
+                            "SELECT miembro_id, id FROM asistencia WHERE evento_id = ? AND ciclo = ? AND fecha = ? AND COALESCE(clan_id, 1) = ?",
+                            (int(evento_id), ciclo, str(fecha_evento), clan_id_actual)
                         )
                         dict_existentes = {row[0]: row[1] for row in cursor_save.fetchall()}
 
@@ -285,7 +286,7 @@ def mostrar():
                             if id_asistencia is not None:
                                 datos_update.append((intencion_db, sala_db, habilidad_db, asistio_realmente_db, id_asistencia))
                             else:
-                                datos_insert.append((miembro_id, int(evento_id), ciclo, str(fecha_evento), intencion_db, sala_db, habilidad_db, asistio_realmente_db))
+                                datos_insert.append((miembro_id, int(evento_id), ciclo, str(fecha_evento), intencion_db, sala_db, habilidad_db, asistio_realmente_db, clan_id_actual))
                         
                         # Paso D: Ejecución Bulk
                         if datos_update:
@@ -298,8 +299,8 @@ def mostrar():
                         if datos_insert:
                             cursor_save.executemany(
                                 """INSERT INTO asistencia 
-                                   (miembro_id, evento_id, ciclo, fecha, estado_asistencia, intencion, sala_asignada, habilidad, asistio_realmente) 
-                                   VALUES (?, ?, ?, ?, 'Procesado', ?, ?, ?, ?)""",
+                                   (miembro_id, evento_id, ciclo, fecha, estado_asistencia, intencion, sala_asignada, habilidad, asistio_realmente, clan_id) 
+                                   VALUES (?, ?, ?, ?, 'Procesado', ?, ?, ?, ?, ?)""",
                                 datos_insert
                             )
                         

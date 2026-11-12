@@ -12,9 +12,18 @@ def calcular_efectividad(kills, asistencias, muertes):
 
 
 @st.cache_data(ttl=60)
-def obtener_ciclos_disponibles():
+def obtener_ciclos_disponibles(clan_id=None):
+    if clan_id is None:
+        try:
+            clan_id = st.session_state.get('clan_id', 1)
+        except Exception:
+            clan_id = 1
     conexion = conectar_bd()
-    df = pd.read_sql_query("SELECT id, estado FROM ciclos_inmortales ORDER BY id DESC", conexion)
+    df = pd.read_sql_query(
+        "SELECT COALESCE(numero_ciclo, id) AS id, estado FROM ciclos_inmortales WHERE COALESCE(clan_id, 1) = ? ORDER BY COALESCE(numero_ciclo, id) DESC",
+        conexion,
+        params=(int(clan_id),)
+    )
     conexion.close()
     return df
 
@@ -34,27 +43,29 @@ def obtener_estadisticas_clan(ciclo_filtro, clan_id=None):
             SUM(e.asistencias) AS Total_Asistencias,
             SUM(e.muertes_sufridas) AS Total_Muertes
         FROM miembros m
-        LEFT JOIN estadisticas_guerra e ON m.id = e.miembro_id AND e.ciclo = ?
+        LEFT JOIN estadisticas_guerra e ON m.id = e.miembro_id AND e.ciclo = ? AND COALESCE(e.clan_id, m.clan_id) = ?
         WHERE m.estado = 'Activo' AND m.clan_id = ?
         GROUP BY m.id
     '''
     conexion = conectar_bd()
-    df_stats = pd.read_sql_query(query, conexion, params=(ciclo_filtro, int(clan_id)))
+    df_stats = pd.read_sql_query(query, conexion, params=(ciclo_filtro, int(clan_id), int(clan_id)))
     conexion.close()
     return df_stats
 
 
 def mostrar():
-    st.title("⚔️ Estadísticas de Combate")
+    clan_id_actual = int(st.session_state.get('clan_id', 1))
+    clan_nombre_actual = st.session_state.get('clan_nombre', 'Clan')
+    st.title(f"⚔️ Estadísticas de Combate — {clan_nombre_actual}")
     st.markdown(
-        "Sube los resultados de la guerra para evaluar la efectividad del clan.")
+        f"Sube los resultados de la guerra para evaluar la efectividad de **{clan_nombre_actual}**.")
 
     # ==========================================
     # SECCIÓN 1: VALIDACIÓN Y CARGA DEL ARCHIVO
     # ==========================================
     st.subheader("📤 Subir Resultados (Solo CSV o XLSX)")
     
-    ciclo_activo = obtener_ciclo_activo()
+    ciclo_activo = obtener_ciclo_activo(clan_id_actual)
     if not ciclo_activo:
         st.error("❌ No existe un ciclo inmortal activo en el sistema.")
         st.info("💡 Un administrador debe crear un ciclo inmortal activo para poder registrar estadísticas de guerra.")
@@ -113,11 +124,12 @@ def mostrar():
                             fila['Kills'], fila['Asistencias'], fila['Muertes'])
                         registros_validos.append((
                             miembros_bd[nom_lower],
-                            ciclo_actual_str,  # Registro histórico bajo el ciclo activo
+                            ciclo_actual_str,  # Registro histórico bajo el ciclo activo del clan
                             fila['Kills'],
                             fila['Asistencias'],
                             fila['Muertes'],
-                            efectividad
+                            efectividad,
+                            clan_id_actual
                         ))
                     else:
                         no_registrados.append(nom)
@@ -143,8 +155,8 @@ def mostrar():
                             cursor = conexion_write.cursor()
                             cursor.executemany('''
                                 INSERT INTO estadisticas_guerra 
-                                (miembro_id, ciclo, kills, asistencias, muertes_sufridas, puntaje_porcentaje) 
-                                VALUES (?, ?, ?, ?, ?, ?)
+                                (miembro_id, ciclo, kills, asistencias, muertes_sufridas, puntaje_porcentaje, clan_id) 
+                                VALUES (?, ?, ?, ?, ?, ?, ?)
                             ''', registros_validos)
                             conexion_write.commit()
                             conexion_write.close()
@@ -167,7 +179,7 @@ def mostrar():
     st.subheader("🏆 Desempeño Histórico del Clan (Solo Activos)")
 
     try:
-        df_ciclos_disponibles = obtener_ciclos_disponibles()
+        df_ciclos_disponibles = obtener_ciclos_disponibles(clan_id_actual)
     except Exception:
         df_ciclos_disponibles = pd.DataFrame()
 
@@ -186,7 +198,7 @@ def mostrar():
         st.warning("⚠️ No hay ciclos inmortales creados. Crea uno primero en 'Administrar Ciclo Inmortal'. Se mostrarán estadísticas globales de fallback.")
 
     try:
-        df_stats = obtener_estadisticas_clan(ciclo_filtro)
+        df_stats = obtener_estadisticas_clan(ciclo_filtro, clan_id_actual)
 
         # Limpieza para aquellos que son nuevos y aún no tienen guerras jugadas
         df_stats.fillna(0, inplace=True)

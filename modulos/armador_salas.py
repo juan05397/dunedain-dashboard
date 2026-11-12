@@ -35,12 +35,23 @@ def normalizar_sala_db(sala_db):
 
 
 @st.cache_data(ttl=60)
-def obtener_fechas_asistencia_evento(evento_id):
+def obtener_fechas_asistencia_evento(evento_id, clan_id=None):
+    if clan_id is None:
+        try:
+            clan_id = st.session_state.get('clan_id', 1)
+        except Exception:
+            clan_id = 1
     conexion_as = conectar_bd()
     cursor_as = conexion_as.cursor()
     cursor_as.execute(
-        "SELECT DISTINCT fecha FROM asistencia WHERE evento_id = ? ORDER BY fecha DESC",
-        (int(evento_id),)
+        """
+        SELECT DISTINCT a.fecha
+        FROM asistencia a
+        JOIN miembros m ON a.miembro_id = m.id
+        WHERE a.evento_id = ? AND m.clan_id = ? AND COALESCE(a.clan_id, m.clan_id) = ?
+        ORDER BY a.fecha DESC
+        """,
+        (int(evento_id), int(clan_id), int(clan_id))
     )
     fechas = [r[0] for r in cursor_as.fetchall() if r[0] is not None]
     conexion_as.close()
@@ -59,9 +70,9 @@ def obtener_distribucion_salas_evento(evento_id, fecha_str, clan_id=None):
         SELECT m.nombre, a.sala_asignada, a.habilidad 
         FROM asistencia a
         JOIN miembros m ON a.miembro_id = m.id
-        WHERE a.evento_id = ? AND a.fecha = ? AND m.estado = 'Activo' AND m.clan_id = ?
+        WHERE a.evento_id = ? AND a.fecha = ? AND m.estado = 'Activo' AND m.clan_id = ? AND COALESCE(a.clan_id, m.clan_id) = ?
     """
-    df_dist = pd.read_sql_query(query_dist, conexion_as, params=(int(evento_id), str(fecha_str), int(clan_id)))
+    df_dist = pd.read_sql_query(query_dist, conexion_as, params=(int(evento_id), str(fecha_str), int(clan_id), int(clan_id)))
     conexion_as.close()
     return df_dist
 
@@ -79,7 +90,18 @@ def mostrar():
         {"puntos": 1, "cantidad": 3, "nombre": "IMPONENTE"}
     ]
 
-    # 2. Control de estado y limpieza al cambiar de evento
+    # 2. Control de estado y limpieza al cambiar de evento o de clan
+    clan_actual_armador = int(st.session_state.get('clan_id', 1))
+    if 'ultimo_clan_armador' not in st.session_state:
+        st.session_state['ultimo_clan_armador'] = clan_actual_armador
+    if st.session_state['ultimo_clan_armador'] != clan_actual_armador:
+        for categoria in estructura_salas:
+            for i in range(categoria["cantidad"]):
+                nombre_sala = f"{i+1} ({categoria['nombre']})"
+                if nombre_sala in st.session_state:
+                    del st.session_state[nombre_sala]
+        st.session_state['ultimo_clan_armador'] = clan_actual_armador
+
     if 'ultimo_evento_seleccionado' not in st.session_state:
         st.session_state['ultimo_evento_seleccionado'] = None
 
